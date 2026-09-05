@@ -203,6 +203,8 @@ combine the first 20 rows of each imported public split with synthetic IDs
 and `silence-8`, retaining each audio file's location. Keep that manifest outside
 the repository. Both runners exit nonzero on failed calls; experiment matrices
 validate settings before inference and discard inherited experimental settings.
+They explicitly set `STT_FAST_DECODER=0` so the original baseline remains
+unmodified when the production service includes its own decoder optimization.
 
 The 48-clip validation **rejected both sub-50 ms candidates because WER rose**.
 `sub50-diagnostic.json` isolates context/cadence/gap effects on the nine recordings

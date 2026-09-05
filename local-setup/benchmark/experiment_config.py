@@ -23,7 +23,8 @@ INTEGERS = {"EXP_RIGHT_CONTEXT", "EXP_DEPTH"}
 MODEL_SETTINGS = {"EXP_DECODER", "EXP_DTYPE", "EXP_QUANTIZE_BITS", "EXP_COMPILE_ENCODER", "EXP_PAD_BUCKET_S"}
 DEFAULTS = {"STT_MODEL": "mlx-community/parakeet-tdt-0.6b-v2", "STT_PARTIAL_EVERY_S": "2",
             "STT_LEFT_CONTEXT_S": "10", "STT_SETTLE_HORIZON_S": "1", "STT_SETTLE_GAP_S": "0",
-            "STT_MIN_SETTLE_S": "1", "STT_CACHE_MB": "512", "STT_WIRED_MB": "2048"}
+            "STT_MIN_SETTLE_S": "1", "STT_CACHE_MB": "512", "STT_WIRED_MB": "2048",
+            "STT_FAST_DECODER": "0"}
 
 
 def validate_matrix(matrix, model_only=False):
