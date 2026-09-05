@@ -104,6 +104,8 @@ original baseline. Source hashes and per-clip numeric errors are in the reports;
 reference text, hypothesis text, audio, and token payloads are excluded.
 
 No app rebuild, permission change, credential change, release, or new data
-transmission is needed. Physical microphone/shortcut/paste verification remains
-a separate manual check before merge. The rejected quantization, short-context,
-and experimental cache settings are not activated.
+transmission is needed. The decoder's real-model comparison and deployed-service
+replay checks are complete. Physical microphone, shortcut, and paste behavior
+were not retested because their implementation is unchanged; full UI timing
+remains unmeasured. The rejected quantization, short-context, and experimental
+cache settings are not activated.
