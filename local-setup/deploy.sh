@@ -12,7 +12,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 DEST="$HOME/.freeflow-stt"
-FILES=(router.py detclean.py stt_server.py)
+FILES=(router.py detclean.py stt_server.py fast_decoder.py licenses/parakeet-mlx-Apache-2.0.txt)
 VENV_PY="$HOME/.freeflow-ft/venv/bin/python"
 
 sha() { shasum -a 256 "$1" | cut -c1-12; }
@@ -28,6 +28,10 @@ verify() {
   done
   [ "$have_router" = "$want_router" ] && echo "router  running $have_router = repo" || { echo "router  running $have_router ≠ repo $want_router"; ok=1; }
   [ "$have_stt" = "$want_stt" ] && echo "stt     running $have_stt = repo" || { echo "stt     running $have_stt ≠ repo $want_stt"; ok=1; }
+  local want_decoder have_decoder
+  want_decoder=$(sha local-setup/fast_decoder.py)
+  have_decoder=$(curl -s -m 3 127.0.0.1:8082/health | python3 -c 'import json,sys; print(json.load(sys.stdin).get("decoder",{}).get("source_sha","?"))' 2>/dev/null || echo "down")
+  [ "$have_decoder" = "$want_decoder" ] && echo "decoder running $have_decoder = repo" || { echo "decoder running $have_decoder ≠ repo $want_decoder"; ok=1; }
   echo "router policy: $(curl -s -m 3 127.0.0.1:11435/v1/status | python3 -c 'import json,sys; d=json.load(sys.stdin); print("force_local=%s precache_llm=%s heartbeat=%ss local_warm=%s" % (d["force_local"], d["precache_llm"], d["local_heartbeat_s"], d["local_warm"]))' 2>/dev/null || echo unavailable)"
   echo "stt memory:    $(curl -s -m 3 127.0.0.1:8082/health | python3 -c 'import json,sys; m=json.load(sys.stdin).get("memory",{}); print("active %sMB cache %sMB" % (m.get("active_mb","?"), m.get("cache_mb","?")))' 2>/dev/null || echo unavailable)"
   local auth
@@ -42,10 +46,11 @@ echo "==> tests"
 python3 local-setup/test_router.py >/dev/null 2>&1 || { echo "router tests FAILED — not deploying"; exit 1; }
 python3 local-setup/test_detclean.py >/dev/null 2>&1 || { echo "detclean tests FAILED — not deploying"; exit 1; }
 "$VENV_PY" local-setup/test_stt_server.py >/dev/null 2>&1 || { echo "stt tests FAILED — not deploying"; exit 1; }
+python3 local-setup/test_fast_decoder.py >/dev/null 2>&1 || { echo "decoder tests FAILED — not deploying"; exit 1; }
 echo "    all passing"
 
 echo "==> copying to $DEST"
-mkdir -p "$DEST"
+mkdir -p "$DEST/licenses"
 for f in "${FILES[@]}"; do cp "local-setup/$f" "$DEST/$f"; done
 
 echo "==> restarting services (kickstart keeps the plist env; use bootout/bootstrap after env changes)"

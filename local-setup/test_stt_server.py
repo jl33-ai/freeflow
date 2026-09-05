@@ -300,6 +300,15 @@ class ContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body["sessions"], 0)
         self.assertEqual(body["source_sha"], stt_server.source_sha(), "health reports which source is running")
 
+    async def test_health_reports_active_decoder_without_content(self):
+        from fast_decoder import DecoderState, SOURCE_SHA
+        self.fake.decoder_state = DecoderState("disabled")
+        self.fake.decoder_state.set("compiled-cache", "validated")
+        async with ClientSession() as cs:
+            async with cs.get("http://127.0.0.1:%d/health" % self.port) as r:
+                body = await r.json()
+        self.assertEqual(body["decoder"], {"mode": "compiled-cache", "reason": "validated", "source_sha": SOURCE_SHA})
+
 
 class SettleAndSpliceTests(unittest.TestCase):
     W = stt_server.Word

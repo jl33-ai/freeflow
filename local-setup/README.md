@@ -61,7 +61,9 @@ ollama pull llama3.1:8b            # local cleanup fallback model
 ## 3. Install the STT server + router
 
 ```bash
-cp stt_server.py router.py start-ollama.sh ~/.freeflow-stt/
+mkdir -p ~/.freeflow-stt/licenses
+cp stt_server.py fast_decoder.py router.py detclean.py start-ollama.sh ~/.freeflow-stt/
+cp licenses/parakeet-mlx-Apache-2.0.txt ~/.freeflow-stt/licenses/
 ```
 
 `stt_server.py` (port 8082) downloads `mlx-community/parakeet-tdt-0.6b-v2` on first
@@ -72,6 +74,22 @@ lines; at key-up one `commit: tail 3.1s (window 13.1s) → final in 201ms` line.
 (protocol contract, settling, splicing, resampling) and
 `python3 test_stt_server.py --real some.wav --pace` (streams a real file at
 real-time speed and prints commit→final latency).
+
+The local service enables an optimized greedy decoder for Parakeet v2 with
+`parakeet-mlx` 0.5.2 and MLX 0.31.2, the versions validated on 400 public clips.
+It compiles predictor/joint steps, reuses predictor output after blank tokens,
+and skips token confidence that FreeFlow does not consume. Text, token timing,
+model precision, streaming cadence, and retained context keep their existing
+semantics. Other model/library versions use the original decoder until validated.
+Setup or inference failures also fall back to the original decoder; inference
+fallback retries once and disables optimization until the service restarts.
+
+`/health` includes the active decoder mode, a content-free reason code, and its
+source hash. `STT_FAST_DECODER=0` disables the optimization at startup. After
+updating the server, copy `fast_decoder.py` and its license too (or use
+`local-setup/deploy.sh`). `make check` runs deterministic decoder tests without
+MLX or downloaded weights. See [implementation validation](../docs/decoder-optimization.md)
+for measured speed, accuracy, and the local deployment check.
 
 ### Router
 

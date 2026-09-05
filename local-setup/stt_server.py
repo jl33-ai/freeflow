@@ -57,6 +57,7 @@ Config (env):
   STT_MIN_SETTLE_S     do not settle chunks shorter than this (1.0)
   STT_CACHE_MB         MLX buffer-cache cap (512); STT_WIRED_MB wired weights budget (2048)
   STT_HEARTBEAT_S      idle keep-warm interval (45; 0 = off)
+  STT_FAST_DECODER     validated Parakeet v2 decoder optimization (1; 0 = original)
 """
 import asyncio
 import base64
@@ -73,6 +74,8 @@ import wave
 
 import numpy as np
 import warnings
+
+from fast_decoder import install_fast_decoder
 
 warnings.filterwarnings("ignore", message=".*web.AppKey.*")
 
@@ -92,6 +95,7 @@ MIN_SETTLE_S = float(os.environ.get("STT_MIN_SETTLE_S", "1.0"))
 CACHE_MB = int(os.environ.get("STT_CACHE_MB", "512"))
 WIRED_MB = int(os.environ.get("STT_WIRED_MB", "2048"))
 HEARTBEAT_S = float(os.environ.get("STT_HEARTBEAT_S", "45"))
+FAST_DECODER = os.environ.get("STT_FAST_DECODER", "1") == "1"
 TARGET_SR = 16000
 # Where settled text is pushed so the LLM router can pre-clean it while the user
 # is still talking (router.py /v1/precache). Empty = off.
@@ -328,6 +332,7 @@ class Transcriber:
                 log.warning("could not set wired limit: %r", e)
         t0 = time.time()
         self.model = from_pretrained(model_id)
+        self.decoder_state = install_fast_decoder(self.model, model_id, enabled=FAST_DECODER)
         log.info("loaded %s in %.1fs", model_id, time.time() - t0)
         # first call compiles kernels; do it now, not on the user's first dictation
         self.transcribe(np.zeros(TARGET_SR, dtype=np.float32))
@@ -622,6 +627,8 @@ async def handle_health(request):
     from aiohttp import web
     body = {"ok": True, "model": MODEL_ID, "sessions": request.app["state"].sessions, "source_sha": SOURCE_SHA}
     tr = request.app.get("transcriber")
+    if tr is not None and hasattr(tr, "decoder_state"):
+        body["decoder"] = tr.decoder_state.summary()
     if tr is not None and hasattr(tr, "memory_stats"):
         try:
             body["memory"] = tr.memory_stats()
