@@ -27,6 +27,10 @@ struct JournalArchive: Codable {
 }
 
 enum JournalCore {
+    static func captureInterval(_ seconds: Double) -> Double {
+        seconds.isFinite && seconds > 0 ? min(300, max(5, seconds.rounded())) : 15
+    }
+
     static func commitHistory(_ entries: [JournalEntry], day: Date, calendar: Calendar = .current) -> String {
         let time = DateFormatter()
         time.locale = Locale(identifier: "en_US_POSIX")
@@ -87,6 +91,7 @@ enum JournalCore {
         var summary: String
         var confidence: String
         var goalID: String?
+        var continuesPrevious: Bool? = nil
     }
 
     static func interpretation(_ data: Data) throws -> Interpretation {
@@ -96,7 +101,7 @@ enum JournalCore {
               ["low", "medium", "high"].contains(value.confidence) else {
             throw CocoaError(.coderReadCorrupt)
         }
-        return Interpretation(category: redact(value.category), summary: redact(value.summary), confidence: value.confidence, goalID: value.goalID)
+        return Interpretation(category: redact(value.category), summary: redact(value.summary), confidence: value.confidence, goalID: value.goalID, continuesPrevious: value.continuesPrevious)
     }
 }
 

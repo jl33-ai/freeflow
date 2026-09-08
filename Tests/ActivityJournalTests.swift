@@ -3,6 +3,11 @@ import Foundation
 enum ActivityJournalTests {
     static func run() {
         testCommitHistory()
+        TestSupport.expectEqual(JournalCore.captureInterval(0), 15)
+        TestSupport.expectEqual(JournalCore.captureInterval(7), 7)
+        TestSupport.expectEqual(JournalCore.captureInterval(2), 5)
+        TestSupport.expectEqual(JournalCore.captureInterval(900), 300)
+        TestSupport.expectEqual(JournalCore.captureInterval(.nan), 15)
         let start = Date(timeIntervalSince1970: 1000)
         // A recent mouse/key event must count even if no CG null event has occurred.
         let recentInput = JournalCapture.idleSeconds { _, type in type.rawValue == UInt32.max ? 3 : 3600 }
@@ -68,4 +73,5 @@ enum ActivityJournalTests {
         let summer = JournalEntry(start: date("2026-11-07T22:32:00Z"), end: date("2026-11-07T23:43:00Z"), app: "Synthetic Mail", summary: "did emails")
         TestSupport.expectEqual(JournalCore.commitHistory([summer], day: summer.start, calendar: melbourne), "9:32-10:43am: did emails")
     }
+
 }
