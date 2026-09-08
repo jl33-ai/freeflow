@@ -11,7 +11,8 @@ struct ActivityJournalView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("git for work").font(.title2.bold())
+                Image("DenIcon").resizable().frame(width: 36, height: 36).accessibilityHidden(true)
+                Text("Git for Work (Den)").font(.headline)
                 Spacer()
                 Button(journal.enabled ? "Pause" : "Start") { journal.setEnabled(!journal.enabled) }
                     .buttonStyle(.borderedProminent).disabled(journal.storageError != nil)
@@ -35,8 +36,8 @@ struct ActivityJournalView: View {
                     if journal.records.isEmpty {
                         VStack(spacing: 8) {
                             Image(systemName: "camera").font(.system(size: 30)).foregroundStyle(.tertiary)
-                            Text("Your raw captures will show up here.").font(.headline)
-                            Text("Screenshots, literal OCR, and local activity descriptions.").foregroundStyle(.secondary)
+                            Text("No captures yet").font(.headline)
+                            Text("Start capturing to build your work history.").foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity).padding(.vertical, 75)
                     }
                     ForEach(journal.records.sorted { $0.capturedAt > $1.capturedAt }) { item in
@@ -81,18 +82,12 @@ struct ActivityJournalView: View {
                     .focused($editingCaptureInterval).onSubmit { saveInterval() }
                 Text("seconds")
             }
-            Text("5–300 seconds. Captures continue while idle; lock, sleep and excluded windows are skipped.").foregroundStyle(.secondary)
+            Text("5–300 seconds").foregroundStyle(.secondary)
             Divider()
-            Text("Raw means raw").font(.headline)
-            Text("Full-resolution PNGs, literal OCR and app/window metadata are saved locally until you delete them. Raw files are not obfuscated and can include private text visible on screen.")
-            Text("Every capture is queued for local OCR and an activity description. Export includes the originals even if processing is pending or fails.")
             TextField("Excluded apps, separated by commas", text: $journal.excludedApps)
-            Text("Password managers and this app are excluded. Private-window detection is best effort.").foregroundStyle(.secondary)
-            Divider()
-            Text(journal.modelStatus).foregroundStyle(.secondary)
-            Button("Open raw data folder") { journal.revealStorage() }
-            Button("Screen Recording settings…") { journal.openPermissions() }
-            Text("No cloud processing or sync. FreeFlow dictation has separate provider settings.").foregroundStyle(.secondary)
+            Text("Screenshots, OCR and descriptions stay on this Mac. Exports include unredacted originals.").foregroundStyle(.secondary)
+            Button("Open data folder") { journal.revealStorage() }
+            Button("Screen Recording permission…") { journal.openPermissions() }
         }.font(.callout).padding(20).frame(width: 340)
             .onAppear { captureSeconds = journal.captureInterval }
             .onChange(of: editingCaptureInterval) { focused in if !focused { saveInterval() } }

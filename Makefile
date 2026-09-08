@@ -41,22 +41,15 @@ YAML_FILES = $(shell find .github -type f \( -name '*.yml' -o -name '*.yaml' \) 
 RESOURCES = $(CONTENTS)/Resources
 ARCH ?= $(shell uname -m)
 
-# Pick the icon source based on which bundle we are building. Dev builds get
-# a distinct hammer-on-waveform icon so a developer's dock shows at a glance
-# which FreeFlow they are running when both are installed side by side.
-ifeq ($(APP_NAME),FreeFlow Dev)
-ICON_SOURCE = Resources/AppIcon-Dev-Source.png
-ICON_ICNS = Resources/AppIcon-Dev.icns
-else
-ICON_SOURCE = Resources/AppIcon-Source.png
-ICON_ICNS = Resources/AppIcon.icns
-endif
+# Den branding; retain the bundle identity and data location.
+ICON_SOURCE = Resources/DenIcon.png
+ICON_ICNS = Resources/DenIcon.icns
 
 .PHONY: all check clean run icon dmg codesign-dmg notarize test typecheck validate
 
 all: $(APP_EXECUTABLE_TARGET)
 
-$(APP_EXECUTABLE_TARGET): $(SOURCES) Info.plist $(ICON_ICNS)
+$(APP_EXECUTABLE_TARGET): $(SOURCES) Info.plist $(ICON_ICNS) Resources/DenIcon.png Resources/DenMenu.png
 	@mkdir -p "$(MACOS_DIR)" "$(RESOURCES)"
 ifeq ($(ARCH),universal)
 	swiftc \
@@ -85,10 +78,12 @@ else
 endif
 	@cp Info.plist "$(CONTENTS)/"
 	@plutil -replace CFBundleName -string "$(APP_NAME)" "$(CONTENTS)/Info.plist"
-	@plutil -replace CFBundleDisplayName -string "$(APP_NAME)" "$(CONTENTS)/Info.plist"
+	@plutil -replace CFBundleDisplayName -string "Git for Work (Den)" "$(CONTENTS)/Info.plist"
 	@plutil -replace CFBundleExecutable -string "$(APP_NAME)" "$(CONTENTS)/Info.plist"
 	@plutil -replace CFBundleIdentifier -string "$(BUNDLE_ID)" "$(CONTENTS)/Info.plist"
 	@cp $(ICON_ICNS) "$(RESOURCES)/AppIcon.icns"
+	@cp Resources/DenIcon.png "$(RESOURCES)/DenIcon.png"
+	@cp Resources/DenMenu.png "$(RESOURCES)/DenMenu.png"
 	@plutil -replace NSMicrophoneUsageDescription -string "$(APP_NAME) needs microphone access to transcribe your speech." "$(CONTENTS)/Info.plist"
 	@plutil -replace NSSpeechRecognitionUsageDescription -string "$(APP_NAME) needs speech recognition to convert your voice to text." "$(CONTENTS)/Info.plist"
 	@plutil -replace NSAccessibilityUsageDescription -string "$(APP_NAME) needs accessibility access to detect the text cursor position and paste transcribed text." "$(CONTENTS)/Info.plist"

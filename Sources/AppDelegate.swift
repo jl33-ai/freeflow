@@ -8,9 +8,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NetworkMonitor.shared.start()
         ActivityJournal.shared.start()
-        if ProcessInfo.processInfo.arguments.contains("--activity-journal") {
-            ActivityJournal.shared.showWindow()
-        }
+        ActivityJournal.shared.showWindow()
 
         NotificationCenter.default.addObserver(
             self,
@@ -46,10 +44,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        guard appState.hasCompletedSetup else { return true }
-        if !flag {
-            showSettingsWindow()
-        }
+        ActivityJournal.shared.showWindow()
         return true
     }
 

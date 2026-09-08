@@ -216,7 +216,7 @@ actor RawCaptureStore {
             try handle.write(contentsOf: JSONSerialization.data(withJSONObject: row, options: .sortedKeys) + Data([10]))
         }
         try Data("""
-        git for work raw export (schema 1)
+        Git for Work (Den) raw export (schema 1)
         manifest.jsonl: one JSON object per capture, oldest first.
         captures/<id>/screenshot.png: original lossless active-window capture.
         observation.json: timestamps, local timezone/offset, app/window/system metadata and literal Apple Vision OCR.

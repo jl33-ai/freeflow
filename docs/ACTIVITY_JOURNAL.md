@@ -1,3 +1,7 @@
+# Git for Work (Den)
+
+The app opens directly to captures. The Den menu has Open, Start/Pause, and Export; existing dictation controls are under Dictation. There is no daily-plan UI. The gear holds capture interval, exclusions, data folder, and screen permission. Branding uses the supplied Den SVG. Bundle identity and storage paths remain stable to preserve existing data and grants.
+
 # git for work — raw capture log
 
 Open **git for work** from FreeFlow's menu and click **Start**. Set **Screenshot

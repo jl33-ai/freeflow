@@ -114,7 +114,7 @@ struct MenuBarView: View {
             Divider()
 
             // Manual toggle
-            Button("git for work") { journal.showWindow() }
+            Button("Git for Work (Den)") { journal.showWindow() }
             Divider()
 
             Button(appState.isRecording ? "Stop Recording" : "Start Dictating") {
@@ -430,5 +430,20 @@ struct MenuBarView: View {
             .keyboardShortcut("q")
         }
         .padding(4)
+    }
+}
+
+struct DenMenuBarView: View {
+    @EnvironmentObject var appState: AppState
+    @ObservedObject private var journal = ActivityJournal.shared
+
+    var body: some View {
+        Button("Git for Work (Den)") { journal.showWindow() }
+        Button(journal.enabled ? "Pause captures" : "Start captures") { journal.setEnabled(!journal.enabled) }
+            .disabled(journal.storageError != nil)
+        Button("Export all captures…") { journal.export(day: nil) }.disabled(journal.exporting)
+        Divider()
+        Menu("Dictation") { MenuBarView().environmentObject(appState) }
+        Button("Quit") { NSApplication.shared.terminate(nil) }.keyboardShortcut("q")
     }
 }

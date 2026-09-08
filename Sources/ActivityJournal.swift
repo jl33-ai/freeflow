@@ -274,7 +274,7 @@ final class ActivityJournal: ObservableObject {
     func showWindow() {
         if window == nil {
             let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 650), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-            panel.title = "git for work"
+            panel.title = "Git for Work (Den)"
             panel.contentView = NSHostingView(rootView: ActivityJournalView(journal: self))
             panel.minSize = NSSize(width: 500, height: 420)
             panel.isReleasedWhenClosed = false

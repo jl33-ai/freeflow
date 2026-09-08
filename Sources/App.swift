@@ -8,7 +8,7 @@ struct FreeFlowApp: App {
 
     var body: some Scene {
         MenuBarExtra(isInserted: $showMenuBarIcon) {
-            MenuBarView()
+            DenMenuBarView()
                 .environmentObject(appDelegate.appState)
         } label: {
             MenuBarLabel()
@@ -19,58 +19,14 @@ struct FreeFlowApp: App {
 
 @MainActor
 struct MenuBarLabel: View {
-    @EnvironmentObject var appState: AppState
-    @ObservedObject var notificationManager = VocabularyNotificationManager.shared
-    @ObservedObject private var journal = ActivityJournal.shared
-
-    private var iconName: String {
-        if appState.isRecording { return "record.circle" }
-        if appState.isTranscribing { return "ellipsis.circle" }
-        return "waveform"
-    }
-
-    var body: some View {
-        HStack(spacing: 4) {
-            if journal.enabled { Image(systemName: "book.closed.fill").help("git for work") }
-            if notificationManager.showCheckmark {
-                Image(systemName: "checkmark")
-            }
-            if AppBuild.isDevBundle && !appState.isRecording && !appState.isTranscribing {
-                Image(nsImage: StampedMenuBarIcon.templateImage)
-                    .renderingMode(.template)
-            } else {
-                Image(systemName: iconName)
-            }
-        }
-        .animation(.easeInOut(duration: 0.2), value: notificationManager.showCheckmark)
-    }
-}
-
-enum StampedMenuBarIcon {
-    static let templateImage: NSImage = {
-        let size = NSSize(width: 18, height: 16)
-        let image = NSImage(size: size, flipped: false) { rect in
-            let path = NSBezierPath()
-            path.windingRule = .evenOdd
-            path.append(NSBezierPath(roundedRect: rect, xRadius: 3, yRadius: 3))
-            let bars: [(x: CGFloat, y: CGFloat, h: CGFloat)] = [
-                (3.0,  7.0,  2.0),
-                (5.5,  5.0,  6.0),
-                (8.0,  3.0, 10.0),
-                (10.5, 4.0,  8.0),
-                (13.0, 6.0,  4.0),
-            ]
-            for bar in bars {
-                path.append(NSBezierPath(
-                    roundedRect: NSRect(x: bar.x, y: bar.y, width: 1.5, height: bar.h),
-                    xRadius: 0.75, yRadius: 0.75
-                ))
-            }
-            NSColor.black.setFill()
-            path.fill()
-            return true
-        }
+    private static let logo: NSImage = {
+        let image = NSImage(contentsOf: Bundle.main.url(forResource: "DenMenu", withExtension: "png")!)!
+        image.size = NSSize(width: 18, height: 18)
         image.isTemplate = true
         return image
     }()
+
+    var body: some View {
+        Image(nsImage: Self.logo).renderingMode(.template).help("Git for Work (Den)")
+    }
 }
