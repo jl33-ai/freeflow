@@ -114,7 +114,7 @@ struct MenuBarView: View {
             Divider()
 
             // Manual toggle
-            Button("Journal…") { journal.showWindow() }
+            Button("git for work") { journal.showWindow() }
             Divider()
 
             Button(appState.isRecording ? "Stop Recording" : "Start Dictating") {

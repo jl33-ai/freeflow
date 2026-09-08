@@ -31,7 +31,7 @@ struct MenuBarLabel: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            if journal.enabled { Image(systemName: "book.closed.fill").help("Activity Journal enabled") }
+            if journal.enabled { Image(systemName: "book.closed.fill").help("git for work") }
             if notificationManager.showCheckmark {
                 Image(systemName: "checkmark")
             }

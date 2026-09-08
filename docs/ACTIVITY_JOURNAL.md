@@ -1,6 +1,6 @@
-# Local activity journal
+# git for work
 
-Open **Journal…** in the menu bar and click **Start**.
+Open **git for work** in the menu bar and click **Start**.
 The book icon in the menu bar indicates that journaling is enabled. The journal
 is off by default and remembers the toggle across launches. It uses the app's
 Screen Recording permission; grant that in macOS settings if requested.
@@ -99,3 +99,9 @@ are present. A later check corrected the idle query to use all keyboard/mouse
 input, with a synthetic regression test. Live OCR collection, lock/sleep and
 permission-revocation checks remain pending. Do not merge on the strength of the
 synthetic tests and empty-state UI inspection alone.
+
+The **Copy** button copies the selected day in chronological order, using the
+Mac's local time zone (including daylight saving). Each line is exactly a time
+range and its saved description, e.g. `9:32-10:43am: did emails`. Ranges crossing
+noon include both periods, e.g. `11:32am-12:43pm`. No heading or extra metadata is
+added. Synthetic tests cover formatting, day selection, ordering and time zones.

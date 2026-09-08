@@ -27,6 +27,22 @@ struct JournalArchive: Codable {
 }
 
 enum JournalCore {
+    static func commitHistory(_ entries: [JournalEntry], day: Date, calendar: Calendar = .current) -> String {
+        let time = DateFormatter()
+        time.locale = Locale(identifier: "en_US_POSIX")
+        time.timeZone = calendar.timeZone
+        time.dateFormat = "h:mm"
+        func period(_ date: Date) -> String { calendar.component(.hour, from: date) < 12 ? "am" : "pm" }
+        return entries.filter { calendar.isDate($0.start, inSameDayAs: day) && $0.end >= $0.start }
+            .sorted { $0.start < $1.start }
+            .compactMap { entry in
+                let summary = entry.summary.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+                guard !summary.isEmpty else { return nil }
+                let startPeriod = period(entry.start) == period(entry.end) ? "" : period(entry.start)
+                return "\(time.string(from: entry.start))\(startPeriod)-\(time.string(from: entry.end))\(period(entry.end)): \(summary)"
+            }.joined(separator: "\n")
+    }
+
     // Long scheduling gaps are unknown time, never attributed to the previous app.
     static func creditedSeconds(from: Date, to: Date, idle: Double) -> Double {
         let elapsed = to.timeIntervalSince(from)

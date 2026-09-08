@@ -8,6 +8,7 @@ struct ActivityJournalView: View {
     @State private var editing: JournalEntry?
     @State private var settings = false
     @State private var confirmDelete = false
+    @State private var copied = false
 
     private var entries: [JournalEntry] {
         journal.archive.entries.filter { Calendar.current.isDate($0.start, inSameDayAs: day) }.sorted { $0.start > $1.start }
@@ -28,12 +29,12 @@ struct ActivityJournalView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Journal").font(.title2.bold())
+                Text("git for work").font(.title2.bold())
                 Spacer()
                 Button(journal.enabled ? "Pause" : "Start") { journal.setEnabled(!journal.enabled) }
                     .buttonStyle(.borderedProminent).disabled(journal.storageError != nil)
                 Button { settings.toggle() } label: { Image(systemName: "gearshape") }
-                    .buttonStyle(.plain).help("Journal settings")
+                    .buttonStyle(.plain).help("Settings")
                     .popover(isPresented: $settings, arrowEdge: .bottom) { preferences }
             }.padding(20)
 
@@ -43,6 +44,12 @@ struct ActivityJournalView: View {
                 Button { moveDay(1) } label: { Image(systemName: "chevron.right") }.disabled(isToday).help("Next day")
                 Spacer()
                 Text("\(duration(entries.reduce(0) { $0 + $1.seconds })) recorded").foregroundStyle(.secondary)
+                Button(copied ? "Copied" : "Copy") {
+                    let history = JournalCore.commitHistory(journal.archive.entries, day: day)
+                    guard !history.isEmpty else { return }
+                    NSPasteboard.general.clearContents()
+                    copied = NSPasteboard.general.setString(history, forType: .string)
+                }.buttonStyle(.bordered).disabled(entries.isEmpty).help("Copy this day's commit history")
             }.buttonStyle(.plain).padding(.horizontal, 20).padding(.bottom, 16)
 
             ScrollView {
@@ -88,7 +95,13 @@ struct ActivityJournalView: View {
         .sheet(item: $editing) { entry in
             JournalEntryEditor(entry: entry, goals: goals, save: { journal.update($0) }, delete: { journal.deleteEntry(entry.id) })
         }
-        .alert("Delete the entire journal?", isPresented: $confirmDelete) {
+        .onChange(of: day) { _ in copied = false }
+        .task(id: copied) {
+            guard copied else { return }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            if !Task.isCancelled { copied = false }
+        }
+        .alert("Delete all history?", isPresented: $confirmDelete) {
             Button("Cancel", role: .cancel) {}
             Button("Delete", role: .destructive) { journal.deleteAll() }
         } message: { Text("All entries and daily plans will be removed. Recording will pause.") }

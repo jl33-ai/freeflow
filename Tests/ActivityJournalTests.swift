@@ -2,6 +2,7 @@ import Foundation
 
 enum ActivityJournalTests {
     static func run() {
+        testCommitHistory()
         let start = Date(timeIntervalSince1970: 1000)
         // A recent mouse/key event must count even if no CG null event has occurred.
         let recentInput = JournalCapture.idleSeconds { _, type in type.rawValue == UInt32.max ? 3 : 3600 }
@@ -49,5 +50,22 @@ enum ActivityJournalTests {
             try Data("invalid archive".utf8).write(to: store.url)
             TestSupport.expectEqual((try? store.load()) == nil, true)
         } catch { fatalError("Synthetic journal persistence test failed: \(error)") }
+    }
+
+    private static func testCommitHistory() {
+        let iso = ISO8601DateFormatter()
+        func date(_ value: String) -> Date { iso.date(from: value)! }
+        var melbourne = Calendar(identifier: .gregorian)
+        melbourne.timeZone = TimeZone(identifier: "Australia/Melbourne")!
+        let morning = JournalEntry(start: date("2026-09-07T23:32:00Z"), end: date("2026-09-08T00:43:00Z"), app: "Synthetic Mail", summary: "did emails")
+        let noon = JournalEntry(start: date("2026-09-08T01:32:00Z"), end: date("2026-09-08T02:43:00Z"), app: "Synthetic Editor", summary: "reviewed\n\n  export tests")
+        let tomorrow = JournalEntry(start: date("2026-09-08T23:32:00Z"), end: date("2026-09-09T00:43:00Z"), app: "Synthetic Mail", summary: "another day")
+        TestSupport.expectEqual(JournalCore.commitHistory([tomorrow, noon, morning], day: morning.start, calendar: melbourne), "9:32-10:43am: did emails\n11:32am-12:43pm: reviewed export tests")
+        TestSupport.expectEqual(JournalCore.commitHistory([], day: morning.start, calendar: melbourne), "")
+        var utc = melbourne
+        utc.timeZone = TimeZone(secondsFromGMT: 0)!
+        TestSupport.expectEqual(JournalCore.commitHistory([morning], day: morning.start, calendar: utc), "11:32pm-12:43am: did emails")
+        let summer = JournalEntry(start: date("2026-11-07T22:32:00Z"), end: date("2026-11-07T23:43:00Z"), app: "Synthetic Mail", summary: "did emails")
+        TestSupport.expectEqual(JournalCore.commitHistory([summer], day: summer.start, calendar: melbourne), "9:32-10:43am: did emails")
     }
 }
