@@ -132,7 +132,7 @@ actor RawCaptureStore {
         return result.sorted { $0.capturedAt < $1.capturedAt }
     }
 
-    func save(_ record: RawObservation) throws -> RawCaptureIndex {
+    func save(_ record: RawObservation, model: String = JournalLocalModel.model) throws -> RawCaptureIndex {
         let day = RawCaptureJSON.day(record.capturedAt)
         let directory = root.appendingPathComponent(day)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -145,7 +145,7 @@ actor RawCaptureStore {
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: staging) }
         let index = RawCaptureIndex(id: record.id, capturedAt: record.capturedAt, day: day, appName: record.appName, relativePath: "\(day)/\(record.id.uuidString)")
-        try RawCaptureJSON.write(RawInference(status: "pending"), to: staging.appendingPathComponent("inference.json"))
+        try RawCaptureJSON.write(RawInference(model: model, status: "pending"), to: staging.appendingPathComponent("inference.json"))
         try RawCaptureJSON.write(index, to: staging.appendingPathComponent("index.json"))
         try FileManager.default.moveItem(at: staging, to: final)
         return index
@@ -192,7 +192,7 @@ actor RawCaptureStore {
         offset.locale = Locale(identifier: "en_US_POSIX")
         offset.timeZone = timeZone
         offset.dateFormat = "XXXXX"
-        return try list().filter {
+        let entries = try list().filter {
             calendar.isDate($0.capturedAt, inSameDayAs: day) && $0.inferenceStatus == "complete" &&
             !$0.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }.map { item in
@@ -200,5 +200,13 @@ actor RawCaptureStore {
             let zone = offset.string(from: item.capturedAt)
             return "\(time.string(from: item.capturedAt).lowercased()) \(zone) · \(item.appName): \(summary)"
         }.joined(separator: "\n")
+        guard !entries.isEmpty else { return "" }
+        return Self.copyPrompt + "\n\n" + entries
     }
+
+    static let copyPrompt = """
+    Summarize what I worked on today, one very short easy to read dotpoint for each, broken by time. You will see timestamps + app name + summary
+
+    E.g. - worked on stories (2hrs)
+    """
 }

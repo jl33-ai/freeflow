@@ -43,3 +43,6 @@ if shutil.disk_usage(pathlib.Path.home()).free < 8_000_000_000:
 CHECK_SPACE
 fi
 OLLAMA_HOST=127.0.0.1:11436 "$journal_ollama" pull qwen3.5:9b
+
+# OCR mode uses this smaller local text model.
+OLLAMA_HOST=127.0.0.1:11436 "$journal_ollama" pull qwen2.5:3b

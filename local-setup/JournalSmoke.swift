@@ -27,6 +27,9 @@ struct JournalSmoke {
         _ = try JournalCapture.recognize(image: cgImage)
         print("Warm synthetic OCR passed in \(Date().timeIntervalSince(warmBegan)) seconds")
         let png = NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:])!
+        let ocrSummary = try await JournalLocalModel.summarize(app: "Synthetic Editor", observations: recognized, screenshotPNG: Data(), mode: .ocr)
+        precondition(ocrSummary.summary.lowercased().contains("export") || ocrSummary.summary.lowercased().contains("frame"))
+        print("OCR-to-local-text-model summary passed: \(ocrSummary.summary)")
         let modelBegan = Date()
         let summary = try await JournalLocalModel.summarize(app: "Synthetic Editor", observations: "Synthetic editor window", screenshotPNG: png)
         precondition(summary.summary.lowercased().contains("frame") || summary.summary.lowercased().contains("export"), "Summary lost task specifics")

@@ -18,6 +18,9 @@ final class ActivityJournal: ObservableObject {
     @Published var excludedApps = UserDefaults.standard.string(forKey: "journal_excluded_apps") ?? "" {
         didSet { UserDefaults.standard.set(excludedApps, forKey: "journal_excluded_apps") }
     }
+    @Published var inputMode = JournalInputMode(rawValue: UserDefaults.standard.string(forKey: "journal_input_mode") ?? "") ?? .vision {
+        didSet { UserDefaults.standard.set(inputMode.rawValue, forKey: "journal_input_mode") }
+    }
     private let root: URL
     private let store: RawCaptureStore
     private var selectedDay = RawCaptureJSON.day(Date())
@@ -166,6 +169,7 @@ final class ActivityJournal: ObservableObject {
         let requestedAt = Date()
         let idle = JournalCapture.idleSeconds()
         let interval = captureInterval
+        let mode = inputMode
         let pid = app.processIdentifier
         let name = app.localizedName ?? "Unknown app"
         let bundle = app.bundleIdentifier
@@ -190,11 +194,11 @@ final class ActivityJournal: ObservableObject {
                     osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
                     documentURL: capture.documentURL, focusedElementRole: capture.focusedRole,
                     frontmostAtCompletion: NSWorkspace.shared.frontmostApplication?.processIdentifier == pid)
-                let index = try await store.save(record)
+                let index = try await store.save(record, model: mode.model)
                 publish(index)
-                if inferenceTask == nil { runInference(index: index, record: record, png: png) }
+                if inferenceTask == nil { runInference(index: index, record: record, png: png, mode: mode) }
                 else {
-                    publish(try await store.saveInference(RawInference(status: "skipped", error: "Previous description still processing. Image discarded."), index: index))
+                    publish(try await store.saveInference(RawInference(model: mode.model, status: "skipped", error: "Previous description still processing. Image discarded."), index: index))
                 }
                 status = "Reading the screen every \(Int(captureInterval)) seconds"
             } catch {
@@ -205,19 +209,28 @@ final class ActivityJournal: ObservableObject {
         }
     }
 
-    private func runInference(index: RawCaptureIndex, record: RawObservation, png: Data) {
+    private func runInference(index: RawCaptureIndex, record: RawObservation, png: Data, mode: JournalInputMode) {
         modelStatus = "Describing screenshot locally"
         inferenceTask = Task {
             do {
                 let inference: RawInference
                 do {
+                    var observations = "Window: \(record.windowTitle)"
+                    if mode == .ocr {
+                        let text = try await Task.detached(priority: .utility) {
+                            guard let source = CGImageSourceCreateWithData(png as CFData, nil),
+                                  let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw CocoaError(.fileReadCorruptFile) }
+                            return try JournalCapture.literalOCR(image: image).text
+                        }.value
+                        observations += "\nOCR: " + String(text.prefix(18000))
+                    }
                     let result = try await JournalLocalModel.summarize(app: record.appName,
-                        observations: "Window: \(record.windowTitle)", screenshotPNG: png)
-                    inference = RawInference(status: "complete", completedAt: Date(), summary: result.summary, category: result.category, confidence: result.confidence,
-                                             modelInputCharacterLimit: 0, modelInputTruncated: false, inputMode: "screenshot+app/window metadata")
+                        observations: observations, screenshotPNG: mode == .vision ? png : Data(), mode: mode)
+                    inference = RawInference(model: mode.model, status: "complete", completedAt: Date(), summary: result.summary, category: result.category, confidence: result.confidence,
+                                             modelInputCharacterLimit: mode == .ocr ? 18000 : 0, inputMode: mode.rawValue)
                 } catch {
-                    inference = RawInference(status: "failed", completedAt: Date(), error: "Local model unavailable or response invalid. Screenshot discarded.",
-                                             modelInputCharacterLimit: 0, modelInputTruncated: false, inputMode: "screenshot+app/window metadata")
+                    inference = RawInference(model: mode.model, status: "failed", completedAt: Date(), error: "Local model unavailable or response invalid. Screenshot discarded.",
+                                             modelInputCharacterLimit: mode == .ocr ? 18000 : 0, inputMode: mode.rawValue)
                 }
                 let updated = try await store.saveInference(inference, index: index)
                 publish(updated)

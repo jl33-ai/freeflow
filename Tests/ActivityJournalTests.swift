@@ -19,6 +19,13 @@ enum ActivityJournalTests {
         let messages = payload["messages"] as! [[String: Any]]
         TestSupport.expectEqual(messages.last?["images"] as? [String], [syntheticPNG.base64EncodedString()])
         TestSupport.expectEqual(payload["think"] as? Bool, false)
+        let ocrBody = try! JournalLocalModel.requestBody(app: "Editor", observations: "OCR: Investigating frame timing", screenshotPNG: syntheticPNG, mode: .ocr)
+        let ocrPayload = try! JSONSerialization.jsonObject(with: ocrBody) as! [String: Any]
+        let ocrMessages = ocrPayload["messages"] as! [[String: Any]]
+        TestSupport.expectEqual(ocrPayload["model"] as? String, "qwen2.5:3b")
+        TestSupport.expectEqual(ocrMessages.contains { $0["images"] != nil }, false)
+        TestSupport.expectEqual((ocrMessages.last?["content"] as? String)?.contains("Investigating frame timing"), true)
+        TestSupport.expectEqual(payload["model"] as? String, "qwen3.5:9b")
         TestSupport.expectEqual((try? JournalLocalModel.requestBody(app: "Editor", observations: "", screenshotPNG: Data())) == nil, true)
 
         TestSupport.expectEqual(JournalCore.captureInterval(0), 60)

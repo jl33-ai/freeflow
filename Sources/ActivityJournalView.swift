@@ -24,7 +24,7 @@ struct ActivityJournalView: View {
                 Button { moveDay(1) } label: { Image(systemName: "chevron.right") }.disabled(isToday).help("Next day")
                 Spacer()
                 Text("\(journal.records.count) captures").foregroundStyle(.secondary)
-                Button(journal.exporting ? "Copying…" : "Copy day") { journal.export(day: day) }
+                Button(journal.exporting ? "Copying…" : "Copy all") { journal.export(day: day) }
                     .disabled(journal.exporting).help("Copy this day’s LLM summaries with app names and local times")
             }.buttonStyle(.plain).padding(.horizontal, 20).padding(.bottom, 16)
             ScrollView {
@@ -71,6 +71,14 @@ struct ActivityJournalView: View {
 
     private var preferences: some View {
         VStack(alignment: .leading, spacing: 14) {
+            Picker("Summary input", selection: $journal.inputMode) {
+                ForEach(JournalInputMode.allCases, id: \.self) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }.pickerStyle(.segmented).labelsHidden()
+            Text(journal.inputMode == .ocr ? "Apple OCR → local text model" : "Screenshot → local vision model")
+                .foregroundStyle(.secondary)
+            Divider()
             HStack {
                 Text("Screenshot every")
                 TextField("Seconds", value: $captureSeconds, format: .number).frame(width: 50)

@@ -1,11 +1,17 @@
 # Git for Work (Den)
 
-Copy today's commits (menu) and Copy day (window) copy only completed local-model
+Copy today's commits (menu) and Copy all (window) copy only completed local-model
 summaries, oldest first, with local time, UTC offset and app name:
 
 ```
 9:32am +10:00 · Synthetic Editor: Reviewed export timing and repeated final frames.
 ```
+
+Copy prepends the user's instruction verbatim:
+
+> Summarize what I worked on today, one very short easy to read dotpoint for each, broken by time. You will see timestamps + app name + summary
+>
+> E.g. - worked on stories (2hrs)
 
 No raw OCR, window title, JSON, or system metadata is included. Pending, failed,
 interrupted and skipped descriptions are excluded. An empty day leaves the clipboard
@@ -13,8 +19,11 @@ unchanged and shows “No completed LLM summaries for this day”. Day selection
 formatting use the current local timezone and its daylight-saving rules.
 
 Screenshots are processed in memory and given directly to Qwen3.5 9B on loopback
-Ollama (`127.0.0.1:11436`). Apple OCR is no longer run by the capture pipeline because
-the vision model reads the image itself. Neither OCR text nor screenshot files are
+Ollama (`127.0.0.1:11436`). Settings has a persistent segmented switch: Use OCR / Use Vision Model. Vision is
+the default. Vision sends the PNG directly to Qwen3.5 9B; OCR uses Apple Vision in
+memory and supplies up to 18,000 characters to local Qwen2.5 3B without attaching
+an image. The selected mode is fixed for each capture even if the switch changes
+while it is processing. Both modes save only summaries. Neither OCR text nor screenshot files are
 saved. Only index data (time/app/status) and model inference (summary/category/
 confidence/model/status) are persisted. No source window titles or other raw context
 are saved. At startup legacy screenshot.png, ocr.txt and observation.json files
