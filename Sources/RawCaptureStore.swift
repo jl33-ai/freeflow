@@ -60,6 +60,8 @@ struct RawInference: Codable {
     var rawOCRCharacterCount: Int?
     var modelInputCharacterLimit = 18000
     var modelInputTruncated: Bool?
+    // Optional so older text-only inference exports still decode.
+    var inputMode: String?
 }
 
 struct RawCaptureIndex: Codable, Identifiable {

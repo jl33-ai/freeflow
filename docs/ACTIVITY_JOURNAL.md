@@ -65,13 +65,23 @@ Install the dedicated model service once:
 bash local-setup/install-journal-model.sh
 ```
 
-Inference uses only Qwen 2.5 3B at `127.0.0.1:11436`. The dedicated Ollama service
+Inference uses only Qwen 3.5 9B at `127.0.0.1:11436`. The dedicated Ollama service
 has `OLLAMA_NO_CLOUD=1`, one model/inference slot and no runtime log files. No cloud
 fallback or sync exists. Model installation needs internet; processing does not.
-The first 18,000 OCR characters plus the window title inform each description;
-**the raw export retains all OCR**, and inference metadata reports truncation.
-The model input/output has additional masking/instruction filtering, without
-changing the raw record. FreeFlow dictation has separate provider settings.
+Each request attaches the original screenshot PNG directly, plus app/window metadata.
+Apple Vision still independently produces literal OCR for the raw export; OCR text is
+not supplied to the description model. Metadata is filtered and descriptions are
+masked, but screenshot pixels are unredacted and go only to localhost. Inference
+exports mark `inputMode` as `screenshot+app/window metadata`; older entries remain
+readable. Thinking is disabled to bound latency. FreeFlow dictation has separate
+provider settings.
+
+The 9B model download is 6.6 GB; allow at least 8 GB free. On this 24 GB M4 Pro it is
+an initial quality-oriented candidate, not a claim of universal best performance.
+The direct-image integration passes deterministic transport checks. Live vision
+benchmark and installation are pending: the first model download hit insufficient
+disk space and its partial files were removed. The installed app still uses the
+previous text model until the vision model can be downloaded and tested.
 
 Raw files are deliberately **not obfuscated** and may contain private text or
 credentials visible on screen. They are stored locally until you remove them;

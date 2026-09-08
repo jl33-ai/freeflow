@@ -8,7 +8,7 @@ final class ActivityJournal: ObservableObject {
     @Published private(set) var records: [RawCaptureIndex] = []
     @Published private(set) var enabled = UserDefaults.standard.bool(forKey: "journal_enabled")
     @Published private(set) var status = "Paused"
-    @Published private(set) var modelStatus = "Local OCR and Qwen 2.5 · 3B"
+    @Published private(set) var modelStatus = "Apple OCR and Qwen 3.5 · 9B vision"
     @Published private(set) var storageError: String?
     @Published private(set) var exporting = false
     @Published private(set) var captureInterval = JournalCore.captureInterval(UserDefaults.standard.double(forKey: "journal_capture_interval"))
@@ -220,20 +220,24 @@ final class ActivityJournal: ObservableObject {
                 let record = try await store.read(index)
                 let inference: RawInference
                 do {
-                    // Raw files retain ALL text; only the model input is bounded.
-                    let evidence = "Window: \(record.windowTitle)\n" + String(record.ocr.text.prefix(18000))
-                    let result = try await JournalLocalModel.summarize(app: record.appName, observations: evidence)
+                    // Give the vision model the original screenshot. Apple OCR remains a separate raw export.
+                    let folder = try await store.folder(index)
+                    let png = try await Task.detached(priority: .utility) {
+                        try Data(contentsOf: folder.appendingPathComponent("screenshot.png"))
+                    }.value
+                    let result = try await JournalLocalModel.summarize(app: record.appName,
+                        observations: "Window: \(record.windowTitle)", screenshotPNG: png)
                     inference = RawInference(status: "complete", completedAt: Date(), summary: result.summary, category: result.category, confidence: result.confidence,
-                                             rawOCRCharacterCount: record.ocr.text.count, modelInputTruncated: record.ocr.text.count > 18000)
+                                             rawOCRCharacterCount: record.ocr.text.count, modelInputCharacterLimit: 0, modelInputTruncated: false, inputMode: "screenshot+app/window metadata")
                 } catch {
                     inference = RawInference(status: "failed", completedAt: Date(), error: "Local model unavailable or response invalid. Raw screenshot and OCR retained.",
-                                             rawOCRCharacterCount: record.ocr.text.count, modelInputTruncated: record.ocr.text.count > 18000)
+                                             rawOCRCharacterCount: record.ocr.text.count, modelInputCharacterLimit: 0, modelInputTruncated: false, inputMode: "screenshot+app/window metadata")
                 }
                 let updated = try await store.saveInference(inference, index: index)
                 publish(updated)
             } catch { failStorage() }
             inferenceTask = nil
-            modelStatus = "Local OCR and Qwen 2.5 · 3B"
+            modelStatus = "Apple OCR and Qwen 3.5 · 9B vision"
             if storageError == nil { runInference() }
         }
     }

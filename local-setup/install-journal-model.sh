@@ -35,4 +35,11 @@ for journal_attempt in {1..20}; do
     if curl --silent --fail --max-time 1 http://127.0.0.1:11436/api/version >/dev/null; then break; fi
     sleep 1
 done
-OLLAMA_HOST=127.0.0.1:11436 "$journal_ollama" pull qwen2.5:3b
+if ! OLLAMA_HOST=127.0.0.1:11436 "$journal_ollama" show qwen3.5:9b >/dev/null 2>&1; then
+    python3 - <<'CHECK_SPACE'
+import pathlib, shutil
+if shutil.disk_usage(pathlib.Path.home()).free < 8_000_000_000:
+    raise SystemExit("Qwen 3.5 9B needs at least 8 GB free for download and working space. No download started.")
+CHECK_SPACE
+fi
+OLLAMA_HOST=127.0.0.1:11436 "$journal_ollama" pull qwen3.5:9b
