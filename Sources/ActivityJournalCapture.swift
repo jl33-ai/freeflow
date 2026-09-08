@@ -63,7 +63,7 @@ final class JournalNoRedirect: NSObject, URLSessionTaskDelegate {
 
 enum JournalLocalModel {
     static let model = "qwen2.5:3b"
-    static let endpoint = URL(string: "http://127.0.0.1:11434/api/chat")!
+    static let endpoint = URL(string: "http://127.0.0.1:11436/api/chat")!
 
     static func summarize(app: String, observations: String, goals: [JournalGoal]) async throws -> JournalCore.Interpretation {
         let configuration = URLSessionConfiguration.ephemeral
@@ -91,8 +91,13 @@ enum JournalLocalModel {
         let content = String(data: try JSONSerialization.data(withJSONObject: evidence), encoding: .utf8)!
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "model": model, "stream": false, "format": "json", "keep_alive": "2m",
-            "options": ["temperature": 0.1, "num_ctx": 8192, "num_predict": 350],
-            "messages": [["role": "system", "content": instructions], ["role": "user", "content": content]]
+            "options": ["temperature": 0, "num_ctx": 8192, "num_predict": 350],
+            "messages": [
+                ["role": "system", "content": instructions],
+                ["role": "user", "content": "OCR: Export repeats its last frame. Inspecting duration rounding. Changed test fixture from 24 to 30 fps. Next: compare frame counts."],
+                ["role": "assistant", "content": #"{"category":"Engineering","summary":"Reviewed export-debugging notes about a repeated final frame. The notes describe inspecting duration rounding, changing a test fixture from 24 to 30 fps, and planning a frame-count comparison.","confidence":"medium","goalID":null}"#],
+                ["role": "user", "content": content]
+            ]
         ])
         let (data, response) = try await session.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200,

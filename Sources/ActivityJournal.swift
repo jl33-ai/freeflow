@@ -168,7 +168,6 @@ final class ActivityJournal: ObservableObject {
                 let entry = JournalEntry(start: now, end: now, app: appName)
                 activeID = entry.id; activePID = pid; identity = snapshot.identity
                 archive.entries.append(entry)
-                archive.reviewedDays.removeValue(forKey: JournalCore.dayKey(now))
             }
             lastObservation = now
             if let index = archive.entries.firstIndex(where: { $0.id == activeID }) {
@@ -180,7 +179,7 @@ final class ActivityJournal: ObservableObject {
                 if observations.count >= 4 { observations.remove(at: 1) }
                 observations.append(text)
             }
-            status = "Journaling · OCR every 15 seconds"
+            status = "Recording your day"
             if Date().timeIntervalSince(lastSaved) >= 60 { persist() }
         }
     }
@@ -200,7 +199,6 @@ final class ActivityJournal: ObservableObject {
                     archive.entries[index].category = result.category
                     archive.entries[index].confidence = result.confidence
                     archive.entries[index].goalID = goals.first { $0.id.uuidString == result.goalID }?.id
-                    archive.reviewedDays.removeValue(forKey: JournalCore.dayKey(job.entry.start))
                     persist()
                 }
                 modelStatus = "Local model ready · Qwen 2.5 3B"
@@ -222,7 +220,6 @@ final class ActivityJournal: ObservableObject {
         let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
         archive.entries.removeAll { $0.end < cutoff }
         archive.goals.removeAll { $0.day < Calendar.current.startOfDay(for: cutoff) }
-        archive.reviewedDays = archive.reviewedDays.filter { $0.value >= cutoff }
         do { try disk.save(archive); lastSaved = Date() }
         catch {
             storageError = "Could not save journal. Recording stopped; check disk space and file permissions."
@@ -235,14 +232,10 @@ final class ActivityJournal: ObservableObject {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty, minutes.isFinite, minutes > 0 else { return }
         archive.goals.append(JournalGoal(day: Calendar.current.startOfDay(for: day), text: JournalCore.redact(String(clean.prefix(500))), minutes: minutes))
-        archive.reviewedDays.removeValue(forKey: JournalCore.dayKey(day))
         persist()
     }
 
     func removeGoal(_ id: UUID) {
-        if let goal = archive.goals.first(where: { $0.id == id }) {
-            archive.reviewedDays.removeValue(forKey: JournalCore.dayKey(goal.day))
-        }
         archive.goals.removeAll { $0.id == id }
         for index in archive.entries.indices where archive.entries[index].goalID == id { archive.entries[index].goalID = nil }
         persist()
@@ -259,22 +252,13 @@ final class ActivityJournal: ObservableObject {
         revised.end = archive.entries[index].end
         revised.sampleCount = archive.entries[index].sampleCount
         archive.entries[index] = revised
-        archive.reviewedDays.removeValue(forKey: JournalCore.dayKey(entry.start))
         persist()
     }
 
     func deleteEntry(_ id: UUID) {
-        if let entry = archive.entries.first(where: { $0.id == id }) {
-            archive.reviewedDays.removeValue(forKey: JournalCore.dayKey(entry.start))
-        }
         if activeID == id { finishSession() }
         archive.entries.removeAll { $0.id == id }
         pending.removeAll { $0.entry.id == id }
-        persist()
-    }
-
-    func review(day: Date) {
-        archive.reviewedDays[JournalCore.dayKey(day)] = Date()
         persist()
     }
 
@@ -289,10 +273,10 @@ final class ActivityJournal: ObservableObject {
 
     func showWindow() {
         if window == nil {
-            let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 760), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-            panel.title = "Activity Journal"
+            let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 650), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+            panel.title = "Journal"
             panel.contentView = NSHostingView(rootView: ActivityJournalView(journal: self))
-            panel.minSize = NSSize(width: 800, height: 600)
+            panel.minSize = NSSize(width: 500, height: 420)
             panel.isReleasedWhenClosed = false
             panel.center(); window = panel
         }

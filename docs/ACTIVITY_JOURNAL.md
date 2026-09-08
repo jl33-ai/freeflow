@@ -1,6 +1,6 @@
 # Local activity journal
 
-Open **Activity Journal…** in the menu bar and enable **Journal enabled**.
+Open **Journal…** in the menu bar and click **Start**.
 The book icon in the menu bar indicates that journaling is enabled. The journal
 is off by default and remembers the toggle across launches. It uses the app's
 Screen Recording permission; grant that in macOS settings if requested.
@@ -20,17 +20,17 @@ interval. Time spent reading without input for over two minutes is also excluded
 Install once on an Apple Silicon Mac:
 
 ```sh
-brew install ollama
-brew services start ollama
-ollama pull qwen2.5:3b
+bash local-setup/install-journal-model.sh
 ```
 
 Only model installation needs internet. The journal always calls the native
-Ollama endpoint `http://127.0.0.1:11434/api/chat` with `qwen2.5:3b`. This is separate
+Ollama endpoint `http://127.0.0.1:11436/api/chat` with `qwen2.5:3b`. This is separate
 from FreeFlow's dictation providers and hybrid router. There are no configurable
 remote URLs, redirects, cookies, proxies or cloud fallback. Model weights are
 about 1.9 GB; the loaded model uses additional RAM and is kept warm for two minutes.
-The service starts at login. Dictation's existing provider configuration is unchanged.
+The dedicated service starts at login with `OLLAMA_NO_CLOUD=1`, one loaded model,
+one inference slot, and a loopback-only listener. It writes no runtime logs.
+Dictation's existing provider configuration is unchanged.
 
 One interpretation runs at a time, with at most four queued sessions. Evidence is
 bounded to a first observation and three recent observations, up to 4,500 characters
@@ -40,14 +40,13 @@ observations are not written to disk or retried after restart.
 
 ## Review and privacy
 
-Add daily intentions and planned minutes. A local model suggests intention matches;
-edit entries to correct the summary, work category or intention. App name and work
-purpose are separate fields. Totals count each session once. Marking a day reviewed
-records a review timestamp, not an immutable Git commit. Subsequent changes clear
-the marker.
+The compact window shows Start/Pause, a day selector and a timeline. Click an
+entry to edit or delete it. Expand Daily plan to add intentions and planned minutes;
+a local model suggests intention matches, which can be corrected in the entry editor.
+Settings are behind the gear. There are no review/commit controls or technical
+metrics in the main window. Totals count each session once.
 
-Only summaries, durations, app names, confidence, sample counts, intentions and
-review timestamps are saved in `ActivityJournal/journal.json` inside this app's
+Only summaries, durations, app names, confidence, sample counts, intentions are saved in `ActivityJournal/journal.json` inside this app's
 Application Support directory. The directory is mode 0700 and the file is 0600;
 atomic writes replace the prior archive. It is not separately encrypted. The app
 retains 30 days. Corrupt files stop recording instead of silently overwriting data.
@@ -62,7 +61,7 @@ state may remain in RAM until Ollama unloads it.
 Password managers and FreeFlow itself are excluded. Add other excluded app names
 or bundle IDs as comma-separated text. Private browser detection relies on window
 titles and cannot reliably identify every private tab; exclude the whole browser
-when needed. Pause from the menu bar at any time. Delete individual sessions or
+when needed. Pause from the journal window at any time. Delete individual sessions or
 clear the entire archive from the journal. Clearing also cancels pending work and
 pauses collection; it is ordinary file replacement, not secure disk erasure.
 
@@ -88,7 +87,8 @@ revocation. Confirm the journal is quiet while FreeFlow is foreground. Never use
 personal screenshots or journal contents as repository fixtures or build logs.
 
 Implementation validation (2026-09-08): `make check`, full arm64 bundle build,
-strict code-signature verification and `git diff --check` passed. The synthetic
+strict code-signature verification and `git diff --check` passed. The dedicated
+runtime was verified to reject a cloud-model request with HTTP 403 (cloud disabled). The synthetic
 OCR + local model smoke test passed, including intention matching and a known
 instruction-injection fixture. Warm fixture OCR was about 0.09 seconds and local
 interpretation about 1.4 seconds; cold initialization was substantially slower.

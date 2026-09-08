@@ -24,7 +24,6 @@ struct JournalGoal: Codable, Identifiable {
 struct JournalArchive: Codable {
     var entries: [JournalEntry] = []
     var goals: [JournalGoal] = []
-    var reviewedDays: [String: Date] = [:]
 }
 
 enum JournalCore {
@@ -33,11 +32,6 @@ enum JournalCore {
         let elapsed = to.timeIntervalSince(from)
         guard elapsed > 0, elapsed <= 35, idle.isFinite, idle >= 0 else { return 0 }
         return max(0, elapsed - max(0, idle - 120))
-    }
-
-    static func dayKey(_ day: Date) -> String {
-        let c = Calendar.current.dateComponents([.year, .month, .day], from: day)
-        return "\(c.year!)-\(c.month!)-\(c.day!)"
     }
 
     static func redact(_ text: String) -> String {

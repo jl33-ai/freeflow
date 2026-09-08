@@ -114,10 +114,7 @@ struct MenuBarView: View {
             Divider()
 
             // Manual toggle
-            Button("Activity Journal…") { journal.showWindow() }
-            Button(journal.enabled ? "Pause Activity Journal" : "Start Activity Journal") {
-                journal.setEnabled(!journal.enabled)
-            }
+            Button("Journal…") { journal.showWindow() }
             Divider()
 
             Button(appState.isRecording ? "Stop Recording" : "Start Dictating") {

@@ -6,6 +6,7 @@ struct ActivityJournalView: View {
     @State private var intention = ""
     @State private var plannedMinutes = 60.0
     @State private var editing: JournalEntry?
+    @State private var settings = false
     @State private var confirmDelete = false
 
     private var entries: [JournalEntry] {
@@ -14,125 +15,125 @@ struct ActivityJournalView: View {
     private var goals: [JournalGoal] {
         journal.archive.goals.filter { Calendar.current.isDate($0.day, inSameDayAs: day) }
     }
+    private var isToday: Bool { Calendar.current.isDateInToday(day) }
     private func duration(_ seconds: Double) -> String {
         let minutes = Int(seconds / 60)
+        if minutes == 0 { return seconds > 0 ? "<1m" : "0m" }
         return minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m" : "\(minutes)m"
+    }
+    private func moveDay(_ offset: Int) {
+        day = Calendar.current.date(byAdding: .day, value: offset, to: day) ?? day
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(spacing: 0) {
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Activity Journal").font(.largeTitle.bold())
-                    Text(journal.status).foregroundStyle(journal.enabled ? .green : .secondary)
-                }
+                Text("Journal").font(.title2.bold())
                 Spacer()
-                Toggle("Journal enabled", isOn: Binding(get: { journal.enabled }, set: { journal.setEnabled($0) }))
-                    .toggleStyle(.switch).disabled(journal.storageError != nil)
-            }
-            Text("Frequent OCR of the active window. Specific summaries stay on this Mac for 30 days. Screenshots and OCR text are discarded after interpretation. Names and identifiers are masked on a best-effort basis; summaries can still be sensitive.")
-                .font(.callout).foregroundStyle(.secondary)
+                Button(journal.enabled ? "Pause" : "Start") { journal.setEnabled(!journal.enabled) }
+                    .buttonStyle(.borderedProminent).disabled(journal.storageError != nil)
+                Button { settings.toggle() } label: { Image(systemName: "gearshape") }
+                    .buttonStyle(.plain).help("Journal settings")
+                    .popover(isPresented: $settings, arrowEdge: .bottom) { preferences }
+            }.padding(20)
+
             HStack {
-                DatePicker("Day", selection: $day, in: ...Date(), displayedComponents: .date).frame(width: 210)
-                Text("\(duration(entries.reduce(0) { $0 + $1.seconds })) observed").font(.headline)
+                Button { moveDay(-1) } label: { Image(systemName: "chevron.left") }.help("Previous day")
+                Text(isToday ? "Today" : day.formatted(date: .abbreviated, time: .omitted)).font(.headline)
+                Button { moveDay(1) } label: { Image(systemName: "chevron.right") }.disabled(isToday).help("Next day")
                 Spacer()
-                Button("Mark reviewed") { journal.review(day: day) }.disabled(entries.isEmpty)
-                if journal.archive.reviewedDays[JournalCore.dayKey(day)] != nil {
-                    Label("Reviewed", systemImage: "checkmark.seal.fill").foregroundStyle(.green)
-                }
-            }
-            Divider()
+                Text("\(duration(entries.reduce(0) { $0 + $1.seconds })) recorded").foregroundStyle(.secondary)
+            }.buttonStyle(.plain).padding(.horizontal, 20).padding(.bottom, 16)
+
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    intentions
-                    if !entries.isEmpty {
-                        let totals = Dictionary(grouping: entries, by: \.category).map { ($0.key, $0.value.reduce(0.0) { $0 + $1.seconds }) }.sorted { $0.1 > $1.1 }
-                        Text(totals.map { "\($0.0): \(duration($0.1))" }.joined(separator: "  ·  "))
-                            .font(.callout).foregroundStyle(.secondary)
-                    }
-                    HStack {
-                        Text("Observed sessions").font(.title2.bold())
-                        Spacer()
-                        Text("App presence is evidence, not proof of completion.").font(.caption).foregroundStyle(.secondary)
-                    }
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    DisclosureGroup("Daily plan") { plan.padding(.top, 10) }
+                        .padding(.bottom, 20)
                     if entries.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Your workday, with the details intact.").font(.headline)
-                            Text("Enable the journal, then work normally. A new session is interpreted about every two minutes or when you switch apps. Add intentions above to compare planned and observed time.")
-                        }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.secondary.opacity(0.07)).cornerRadius(12)
+                        VStack(spacing: 8) {
+                            Image(systemName: "book.closed").font(.system(size: 30)).foregroundStyle(.tertiary)
+                            Text(isToday ? "Your day will show up here." : "Nothing recorded this day.").font(.headline)
+                            if isToday { Text("Click Start, then get on with your work.").foregroundStyle(.secondary) }
+                        }.frame(maxWidth: .infinity).padding(.vertical, 75)
                     }
                     ForEach(entries) { entry in
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text(entry.start, style: .time).monospacedDigit()
-                                Text("→")
-                                Text(entry.end, style: .time).monospacedDigit()
-                                Text("· \(duration(entry.seconds)) · \(entry.app)")
-                                Spacer()
-                                Text(entry.category).font(.caption.bold())
-                                Button("Edit") { editing = entry }
-                            }.font(.callout)
-                            Text(entry.summary).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-                            HStack {
-                                Text("\(entry.sampleCount) OCR observations · \(entry.edited ? "manually reviewed" : "confidence: \(entry.confidence)")")
-                                if let goal = goals.first(where: { $0.id == entry.goalID }) { Text("· \(goal.text)").lineLimit(1) }
-                                Spacer()
-                                Button(role: .destructive) { journal.deleteEntry(entry.id) } label: { Image(systemName: "trash") }.buttonStyle(.borderless)
-                            }.font(.caption).foregroundStyle(.secondary)
-                        }.padding(16).background(Color.secondary.opacity(0.06)).cornerRadius(12)
+                        Button { editing = entry } label: {
+                            VStack(alignment: .leading, spacing: 7) {
+                                HStack(spacing: 6) {
+                                    Text(entry.start, style: .time).monospacedDigit()
+                                    Text("· \(entry.app)")
+                                    Spacer()
+                                    Text(duration(entry.seconds)).monospacedDigit()
+                                }.font(.caption).foregroundStyle(.secondary)
+                                Text(entry.summary).multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
+                                if let goal = goals.first(where: { $0.id == entry.goalID }) {
+                                    Label(goal.text, systemImage: "scope").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                            }.padding(.vertical, 14).contentShape(Rectangle())
+                        }.buttonStyle(.plain).help("Edit this entry")
+                        Divider()
                     }
-                }.padding(.vertical, 4)
+                }.padding(.horizontal, 20)
             }
             Divider()
-            DisclosureGroup("Privacy and local processing") {
-                VStack(alignment: .leading, spacing: 8) {
-                    TextField("Exclude apps (comma-separated names or bundle IDs)", text: $journal.excludedApps)
-                    Text("Password managers and this app are excluded. Private browser windows are skipped when their title identifies them; exclude your browser for a stronger boundary. Idle time after two minutes, lock and sleep are not recorded. No cloud fallback.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    HStack {
-                        Text(journal.modelStatus).font(.caption)
-                        Spacer()
-                        Button("Delete entire journal…", role: .destructive) { confirmDelete = true }
-                    }
-                }.padding(.top, 8)
-            }
-            if let error = journal.storageError { Text(error).foregroundStyle(.red) }
+            HStack {
+                Text(journal.storageError ?? journal.status).lineLimit(2)
+                Spacer()
+                Label("On this Mac", systemImage: "lock").fixedSize()
+            }.font(.caption).foregroundStyle(.secondary).padding(12)
         }
-        .padding(24)
-        .sheet(item: $editing) { entry in JournalEntryEditor(entry: entry, goals: goals) { journal.update($0) } }
+        .sheet(item: $editing) { entry in
+            JournalEntryEditor(entry: entry, goals: goals, save: { journal.update($0) }, delete: { journal.deleteEntry(entry.id) })
+        }
         .alert("Delete the entire journal?", isPresented: $confirmDelete) {
             Button("Cancel", role: .cancel) {}
             Button("Delete", role: .destructive) { journal.deleteAll() }
-        } message: { Text("This removes all saved sessions, intentions and review markers, and pauses recording.") }
+        } message: { Text("All entries and daily plans will be removed. Recording will pause.") }
     }
 
-    private var intentions: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("What you intended to do").font(.title2.bold())
+    private var plan: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(goals) { goal in
+                let actual = entries.filter { $0.goalID == goal.id }.reduce(0.0) { $0 + $1.seconds }
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(goal.text)
+                        Spacer()
+                        Button { journal.removeGoal(goal.id) } label: { Image(systemName: "xmark") }
+                            .buttonStyle(.plain).foregroundStyle(.secondary).help("Remove intention")
+                    }
+                    Text("\(duration(actual)) of \(duration(goal.minutes * 60)) planned").font(.caption).foregroundStyle(.secondary)
+                }
+            }
             HStack {
-                TextField("e.g. Rewrite the opening scene until the disagreement feels earned", text: $intention)
-                TextField("Minutes", value: $plannedMinutes, format: .number).frame(width: 60)
+                TextField("What do you want to get done?", text: $intention)
+                TextField("Minutes", value: $plannedMinutes, format: .number).frame(width: 45)
                 Text("min").foregroundStyle(.secondary)
-                Button("Add intention") {
+                Button("Add") {
                     journal.addGoal(day: day, text: intention, minutes: plannedMinutes)
                     intention = ""
                 }.disabled(intention.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || plannedMinutes <= 0)
             }
-            ForEach(goals) { goal in
-                let actual = entries.filter { $0.goalID == goal.id }.reduce(0.0) { $0 + $1.seconds }
-                HStack {
-                    Text(goal.text)
-                    Spacer()
-                    Text("\(duration(actual)) observed / \(duration(goal.minutes * 60)) planned").monospacedDigit().foregroundStyle(.secondary)
-                    Button { journal.removeGoal(goal.id) } label: { Image(systemName: "xmark.circle") }.buttonStyle(.borderless)
-                }.font(.callout)
-            }
-            if !goals.isEmpty {
-                Text("Unmatched: \(duration(entries.filter { $0.goalID == nil }.reduce(0) { $0 + $1.seconds })). Edit sessions to correct automatic matches.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
         }
+    }
+
+    private var preferences: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Everything stays on this Mac").font(.headline)
+            Text("Local OCR reads the active window every 15 seconds. A local model describes your activity. No cloud processing or sync.")
+            Text("Only entries and timing are saved, for 30 days. Screenshots and OCR text are discarded. Details are masked where possible, but entries can still be sensitive.")
+            Divider()
+            Text("Excluded apps").font(.headline)
+            TextField("Names, separated by commas", text: $journal.excludedApps)
+            Text("Password managers and this app are always excluded. Private-window detection is best effort; exclude your browser if needed.")
+            Divider()
+            Text(journal.modelStatus).foregroundStyle(.secondary)
+            Text("Descriptions are AI interpretations; click an entry to correct it. FreeFlow dictation uses its own provider settings.").foregroundStyle(.secondary)
+            Button("Screen Recording settings…") {
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+            }
+            Button("Delete all entries…", role: .destructive) { settings = false; confirmDelete = true }
+        }.font(.callout).padding(20).frame(width: 320)
     }
 }
 
@@ -141,21 +142,24 @@ private struct JournalEntryEditor: View {
     @State var entry: JournalEntry
     var goals: [JournalGoal]
     var save: (JournalEntry) -> Void
+    var delete: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Correct this session").font(.title2.bold())
-            TextField("Category", text: $entry.category)
-            TextEditor(text: $entry.summary).frame(height: 140).border(Color.secondary.opacity(0.3))
-            Picker("Intention", selection: $entry.goalID) {
-                Text("Unmatched").tag(nil as UUID?)
-                ForEach(goals) { Text($0.text).tag(Optional($0.id)) }
+            Text("Edit entry").font(.title2.bold())
+            TextEditor(text: $entry.summary).frame(height: 140).border(Color.secondary.opacity(0.2))
+            if !goals.isEmpty {
+                Picker("Daily plan", selection: $entry.goalID) {
+                    Text("Not linked").tag(nil as UUID?)
+                    ForEach(goals) { Text($0.text).tag(Optional($0.id)) }
+                }
             }
             HStack {
+                Button("Delete", role: .destructive) { delete(); dismiss() }
                 Spacer()
                 Button("Cancel") { dismiss() }
                 Button("Save") { save(entry); dismiss() }.keyboardShortcut(.defaultAction)
             }
-        }.padding(24).frame(width: 550)
+        }.padding(20).frame(width: 440)
     }
 }
