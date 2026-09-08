@@ -133,21 +133,21 @@ actor RawCaptureStore {
         return result.sorted { $0.capturedAt < $1.capturedAt }
     }
 
-    func save(_ record: RawObservation, png: Data) throws -> RawCaptureIndex {
+    func save(_ record: RawObservation) throws -> RawCaptureIndex {
         let day = RawCaptureJSON.day(record.capturedAt)
         let directory = root.appendingPathComponent(day)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)
         if let values = try? root.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
            let available = values.volumeAvailableCapacityForImportantUsage,
-           available < max(512 * 1024 * 1024, Int64(png.count) * 2) { throw CocoaError(.fileWriteOutOfSpace) }
+           available < 512 * 1024 * 1024 { throw CocoaError(.fileWriteOutOfSpace) }
         let staging = directory.appendingPathComponent("." + record.id.uuidString)
         let final = directory.appendingPathComponent(record.id.uuidString)
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: staging) }
-        guard FileManager.default.createFile(atPath: staging.appendingPathComponent("screenshot.png").path, contents: png, attributes: [.posixPermissions: 0o600]) else { throw CocoaError(.fileWriteUnknown) }
-        let index = RawCaptureIndex(id: record.id, capturedAt: record.capturedAt, day: day, appName: record.appName, relativePath: "\(day)/\(record.id.uuidString)")
+        let index = RawCaptureIndex(id: record.id, capturedAt: record.capturedAt, day: day, appName: record.appName, relativePath: "\(day)/\(record.id.uuidString)", ocrStatus: record.ocr.status)
         try RawCaptureJSON.write(record, to: staging.appendingPathComponent("observation.json"))
+        guard FileManager.default.createFile(atPath: staging.appendingPathComponent("ocr.txt").path, contents: Data(record.ocr.text.utf8), attributes: [.posixPermissions: 0o600]) else { throw CocoaError(.fileWriteUnknown) }
         try RawCaptureJSON.write(RawInference(status: "pending"), to: staging.appendingPathComponent("inference.json"))
         try RawCaptureJSON.write(index, to: staging.appendingPathComponent("index.json"))
         try FileManager.default.moveItem(at: staging, to: final)
@@ -188,49 +188,37 @@ actor RawCaptureStore {
         return updated
     }
 
-    // Copies fixed capture IDs, not a moving directory tree. PNGs never change;
-    // JSON files are atomic snapshots, and inference remains separate from raw OCR.
-    static func export(folders: [URL], destination: URL) throws -> URL {
-        let staging = destination.appendingPathComponent(".git-for-work-export-" + UUID().uuidString)
-        let final = destination.appendingPathComponent("git-for-work-" + UUID().uuidString)
-        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
-        defer { try? FileManager.default.removeItem(at: staging) }
-        let captures = staging.appendingPathComponent("captures")
-        try FileManager.default.createDirectory(at: captures, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
-        let manifest = staging.appendingPathComponent("manifest.jsonl")
-        guard FileManager.default.createFile(atPath: manifest.path, contents: nil, attributes: [.posixPermissions: 0o600]) else { throw CocoaError(.fileWriteUnknown) }
-        let handle = try FileHandle(forWritingTo: manifest)
-        defer { try? handle.close() }
-        for source in folders {
-            let recordData = try Data(contentsOf: source.appendingPathComponent("observation.json"))
-            let record = try RawCaptureJSON.decoder().decode(RawObservation.self, from: recordData)
-            let inferenceData = try Data(contentsOf: source.appendingPathComponent("inference.json"))
-            let target = captures.appendingPathComponent(record.id.uuidString)
-            try FileManager.default.createDirectory(at: target, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
-            try FileManager.default.copyItem(at: source.appendingPathComponent("screenshot.png"), to: target.appendingPathComponent("screenshot.png"))
-            try recordData.write(to: target.appendingPathComponent("observation.json"))
-            try inferenceData.write(to: target.appendingPathComponent("inference.json"))
-            try Data(record.ocr.text.utf8).write(to: target.appendingPathComponent("ocr.txt"))
-            let row: [String: Any] = ["observation": try JSONSerialization.jsonObject(with: recordData),
-                                     "inference": try JSONSerialization.jsonObject(with: inferenceData),
-                                     "screenshot": "captures/\(record.id.uuidString)/screenshot.png",
-                                     "ocr_text": "captures/\(record.id.uuidString)/ocr.txt"]
-            try handle.write(contentsOf: JSONSerialization.data(withJSONObject: row, options: .sortedKeys) + Data([10]))
+    // Migration removes only app-owned screenshot files; all text remains intact.
+    func removePersistedScreenshots() throws {
+        guard FileManager.default.fileExists(atPath: root.path) else { return }
+        guard let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey], options: []) else { return }
+        for case let file as URL in files where file.lastPathComponent == "screenshot.png" {
+            if try file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true {
+                try FileManager.default.removeItem(at: file)
+            }
         }
-        try Data("""
-        Git for Work (Den) raw export (schema 1)
-        manifest.jsonl: one JSON object per capture, oldest first.
-        captures/<id>/screenshot.png: original lossless active-window capture.
-        observation.json: timestamps, local timezone/offset, app/window/system metadata and literal Apple Vision OCR.
-        ocr.txt: literal OCR text, without redaction, language correction or summarization.
-        OCR bounding boxes are normalized 0–1 coordinates with a bottom-left origin.
-        inference.json: separate local-model interpretation; not ground truth.
-        Pending/failed OCR or inference is explicitly marked; screenshots remain exportable.
-        Timestamps are ISO 8601. No screenshots or OCR are reconstructed from summaries.
-        This export contains the captures selected when Export was clicked. Later captures are not included.
-        Raw material can contain private text and credentials visible on screen. Nothing was uploaded.
-        """.utf8).write(to: staging.appendingPathComponent("README.txt"))
-        try FileManager.default.moveItem(at: staging, to: final)
-        return final
+    }
+
+    func rawText(day: Date, timeZone: TimeZone = .current) throws -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let indices = try list().filter { calendar.isDate($0.capturedAt, inSameDayAs: day) }
+        let date = DateFormatter()
+        date.locale = Locale(identifier: "en_US_POSIX")
+        date.timeZone = timeZone
+        date.dateFormat = "yyyy-MM-dd"
+        let time = DateFormatter()
+        time.locale = .current
+        time.timeZone = timeZone
+        time.dateFormat = "h:mm:ss a zzz (XXXXX)"
+        var blocks = ["Git for Work (Den) — \(date.string(from: day)) — \(timeZone.identifier)\n\(indices.count) screenshots taken; images are not retained."]
+        for index in indices {
+            let record = try read(index)
+            let inference = try JSONSerialization.jsonObject(with: Data(contentsOf: folder(index).appendingPathComponent("inference.json")))
+            let observation = try JSONSerialization.jsonObject(with: RawCaptureJSON.encoder().encode(record))
+            let json = try JSONSerialization.data(withJSONObject: ["observation": observation, "inference": inference], options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+            blocks.append("\(time.string(from: record.capturedAt)) — \(record.appName)\nWindow: \(record.windowTitle)\n\nRAW OCR:\n\(record.ocr.text)\n\nRAW METADATA + INFERENCE:\n\(String(decoding: json, as: UTF8.self))")
+        }
+        return blocks.joined(separator: "\n\n---\n\n")
     }
 }

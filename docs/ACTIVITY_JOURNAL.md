@@ -1,129 +1,60 @@
 # Git for Work (Den)
 
-The app opens directly to captures. The Den menu has Open, Start/Pause, and Export; existing dictation controls are under Dictation. There is no daily-plan UI. The gear holds capture interval, exclusions, data folder, and screen permission. Branding uses the supplied Den SVG. Bundle identity and storage paths remain stable to preserve existing data and grants.
+The menu starts with **Copy today’s commits**, followed by **N screenshots taken
+today**. The window’s **Copy day** copies the selected date. Both write the whole
+day directly to the clipboard: local time (including seconds, timezone and offset),
+app, window title, literal Apple Vision OCR, and complete observation/inference
+JSON. No save dialog, summarization, obfuscation, or remote export step is involved.
+The day is selected using the current local timezone, including daylight saving.
 
-# git for work — raw capture log
+Capture starts automatically. The default interval is 60 seconds; the gear accepts
+5–300 seconds and preserves an explicitly chosen interval. Lock, sleep, private
+windows, password managers, excluded apps, and this app are skipped. A slow capture
+can miss a timer tick; timers are not a real-time guarantee.
 
-Open **git for work** from FreeFlow's menu and click **Start**. Set **Screenshot
-every … seconds** behind the gear (5–300 seconds, default 15). The small window
-shows captures for the selected day, their processing status and local activity
-descriptions. Click a capture to open its original files.
+## Screenshot lifetime
 
-Each successful capture produces a **full-resolution, lossless PNG of the active
-app's window**, literal Apple Vision OCR and relevant system metadata. Capturing,
-OCR and inference have separate queues: slow inference cannot prevent saving new
-screenshots. Every saved capture is queued for OCR and a local description. Pending
-work survives app restarts; failures are explicit and never remove the screenshot.
-There is no automatic task grouping or commit synthesis in this version.
+Screenshots are never written to disk by this feature. A capture is OCR’d in memory,
+then its literal OCR and metadata are written locally. If the local vision model
+is free, it receives the PNG directly over loopback; otherwise its description is
+marked skipped. Only one description runs at a time; no image backlog is retained.
+The image is released after processing, failure, or process exit. macOS manages RAM
+and swap; this is an application-level no-file-persistence policy.
 
-## Raw files and export
+At startup, legacy `screenshot.png` files under this feature’s data directory are
+removed. Existing OCR, metadata, and descriptions are retained. Pending work from
+an earlier process is marked interrupted because its image cannot be recovered.
+Copies users previously exported to other folders are outside this migration.
 
-Raw data is saved under `GitForWorkRaw/YYYY-MM-DD/<capture-uuid>/` in FreeFlow's
-Application Support folder:
+Text lives at `~/Library/Application Support/FreeFlow Dev/GitForWorkRaw/<date>/<id>`:
+`observation.json`, `ocr.txt`, `inference.json`, and `index.json`. Raw text is not
+obfuscated and may include sensitive visible material. Directories are private
+(0700), source text files 0600, and JSON writes atomic. Text has no automatic expiry.
+The earlier `ActivityJournal` archive is preserved. Bundle ID, canonical install
+path, and signing identity stay stable to preserve data and permission grants.
 
-- `screenshot.png`: the original capture, never resized for export.
-- `observation.json`: schema version, UUID, UTC and local timestamps, timezone and
-  UTC offset, requested interval, idle time, app name/bundle ID/PID/executable path,
-  window ID/title/bounds, image dimensions, macOS version, optional Accessibility
-  document URL/focused-element role, whether the app remained foreground, and OCR.
-- `ocr.txt`: literal OCR text, populated after recognition.
-- `inference.json`: the separate local-model description, category, confidence,
-  completion/error state and whether input was truncated. It never replaces OCR.
-- `index.json`: a small internal index for the UI and durable processing queues.
+## Models and speech
 
-OCR uses Apple Vision's accurate recognition with language correction disabled,
-without confidence filtering, redaction or summarization. Text, confidence and
-normalized bounding boxes (bottom-left origin) are retained. OCR is an attempt,
-not an exact transcription guarantee; the PNG is always available for reprocessing.
-Optional Accessibility metadata is read only when permission already exists. The
-journal does not request an Accessibility grant or read clipboard/keystroke values.
+Apple Vision OCR uses accurate recognition with language correction disabled.
+The vision path uses `qwen3.5:9b` at `127.0.0.1:11436`, with cloud disabled and no
+redirects, proxy, cookies, URL cache, or remote fallback. It gets the original image
+plus app/window metadata, not OCR text. Description output is separate from raw data.
+Install with `bash local-setup/install-journal-model.sh` (needs internet and 8 GB free).
+The 6.6 GB model download previously failed for lack of space; the partial download
+was removed. Until installed, OCR and copying work, and descriptions are marked failed.
 
-Use **Export → This day…** or **Export → All captures…** and choose a destination.
-A new folder contains every selected PNG, literal OCR, observation and inference
-JSON, plus `manifest.jsonl` and a README. Each manifest line includes complete
-observation and inference objects and relative paths to the image/text files.
-There are no proprietary formats, API dependencies or summary-only exports.
-An in-progress export includes pending/error statuses accurately; later processing
-results appear in the next export. Original files are unchanged. Export copying
-runs off the capture/store queues and publishes its destination only on success.
-
-## Capture behavior
-
-An observation is attempted when starting, then at the chosen cadence. App switches
-do not trigger extra screenshots. Captures continue while idle, with idle seconds
-recorded. Lock, sleep, excluded apps and unavailable/private windows are skipped.
-Password managers and FreeFlow itself are excluded. Private-window detection is
-best effort; exclude your browser when needed. There is no whole-desktop fallback.
-Slow captures never overlap; macOS scheduling and unavailable windows can cause
-missed intervals. Actual request/capture timestamps are exported.
-
-## Local processing and storage
-
-Install the dedicated model service once:
-
-```sh
-bash local-setup/install-journal-model.sh
-```
-
-Inference uses only Qwen 3.5 9B at `127.0.0.1:11436`. The dedicated Ollama service
-has `OLLAMA_NO_CLOUD=1`, one model/inference slot and no runtime log files. No cloud
-fallback or sync exists. Model installation needs internet; processing does not.
-Each request attaches the original screenshot PNG directly, plus app/window metadata.
-Apple Vision still independently produces literal OCR for the raw export; OCR text is
-not supplied to the description model. Metadata is filtered and descriptions are
-masked, but screenshot pixels are unredacted and go only to localhost. Inference
-exports mark `inputMode` as `screenshot+app/window metadata`; older entries remain
-readable. Thinking is disabled to bound latency. FreeFlow dictation has separate
-provider settings.
-
-The 9B model download is 6.6 GB; allow at least 8 GB free. On this 24 GB M4 Pro it is
-an initial quality-oriented candidate, not a claim of universal best performance.
-The direct-image integration passes deterministic transport checks. Live vision
-benchmark and installation are pending: the first model download hit insufficient
-disk space and its partial files were removed. The installed app still uses the
-previous text model until the vision model can be downloaded and tested.
-
-Raw files are deliberately **not obfuscated** and may contain private text or
-credentials visible on screen. They are stored locally until you remove them;
-there is no automatic expiry. Directories are private (0700), source data files
-0600, and writes are atomic. They are not separately encrypted. The app stops
-saving before available disk space falls below approximately 512 MB. Use **Open
-raw data folder** to manage storage. Images can consume substantial disk space at
-short intervals. Existing older summary-only history is left in its old
-`ActivityJournal` folder; screenshots from that earlier version cannot be recreated.
-
-## Permissions and updates
-
-The capture log itself needs Screen Recording. **Allow…** appears if missing.
-It requests the native grant once on explicit click; subsequent clicks open
-Settings. Background capture never invokes permission prompts. macOS may still
-show its own policy notices or revoke a grant.
-
-Use `./rebuild-dev.sh` to build/install. It remembers a Developer ID identity in
-Git's local metadata, refuses ad-hoc signing, verifies the signature and installs
-at the same path/bundle ID. The initial change from ad-hoc signing may need one new
-grant. Subsequent updates reuse the stable identity. This reduces permission churn
-but cannot guarantee macOS will never request consent again.
+FreeFlow speech-to-text remains under **Dictation**, with the existing hotkeys,
+provider settings, setup, and transcription pipeline. The Den icon shows recording
+or transcribing state alongside it. Dictation provider costs remain separate.
 
 ## Validation
 
-`make check` includes a raw-data round-trip test: screenshot bytes and literal OCR
-(including whitespace, email/path/credential-like synthetic text) survive export
-unchanged, even when model inference fails. It checks the JSONL manifest, metadata,
-private directory permissions and path traversal rejection.
+`make check` covers text persistence/copy output, unredacted OCR, local timezone,
+other-day exclusion, migration without deleting unrelated files, no saved image,
+image transport, icon alpha, and the existing speech/hotkey/provider test suite.
+`git diff --check` checks patch formatting. No real user screenshots, OCR, audio,
+clipboard content, or transcript data is included in tests or logs.
 
-The synthetic image/local-model smoke test requires no real screen data:
-
-```sh
-swiftc -target arm64-apple-macosx13.0 -parse-as-library \
-  Sources/ActivityJournalCore.swift Sources/ActivityJournalCapture.swift \
-  Sources/RawCaptureStore.swift local-setup/JournalSmoke.swift \
-  -o /tmp/freeflow-journal-smoke
-/tmp/freeflow-journal-smoke
-```
-
-The local service was verified to reject a cloud-model request with HTTP 403.
-Stable designated requirements were checked across a changed signed payload.
-Live capture permission, selected-window OCR, interval changes, lock/sleep and
-export-panel interaction still require manual verification before merge. Synthetic
-OCR/export checks do not establish perfect real-world OCR or timing accuracy.
+Native clipboard interaction, live microphone/paste, screen grants, and live model
+inference require manual verification before merge; synthetic checks do not prove
+these end-to-end behaviors. A draft PR must keep that boundary explicit.

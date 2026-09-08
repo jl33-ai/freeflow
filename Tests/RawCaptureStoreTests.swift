@@ -17,13 +17,18 @@ enum RawCaptureStoreTests {
                 imageWidth: 1600, imageHeight: 1200, osVersion: "Synthetic OS", documentURL: "file:///synthetic/notes.txt",
                 focusedElementRole: "AXTextArea", frontmostAtCompletion: true)
             let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5xkAAAAASUVORK5CYII=")!
-            let index = try await store.save(record, png: png)
+            let index = try await store.save(record)
             let folder = try await store.folder(index)
             let pending = try await store.list()
             TestSupport.expectEqual(pending.count, 1)
             TestSupport.expectEqual(pending[0].ocrStatus, "pending")
-            let original = try Data(contentsOf: folder.appendingPathComponent("screenshot.png"))
-            TestSupport.expectEqual(original, png)
+            TestSupport.expectEqual(FileManager.default.fileExists(atPath: folder.appendingPathComponent("screenshot.png").path), false)
+            // Legacy images are removed, but unrelated files and raw text survive migration.
+            try png.write(to: folder.appendingPathComponent("screenshot.png"))
+            try Data("keep".utf8).write(to: folder.appendingPathComponent("unrelated.txt"))
+            try await store.removePersistedScreenshots()
+            TestSupport.expectEqual(FileManager.default.fileExists(atPath: folder.appendingPathComponent("screenshot.png").path), false)
+            TestSupport.expectEqual(FileManager.default.fileExists(atPath: folder.appendingPathComponent("unrelated.txt").path), true)
             let literal = "helo   wrld\ncontact: person@example.test\n/Users/synthetic/private.txt\npassword=fictional"
             let ocr = RawOCR(status: "complete", text: literal,
                              lines: [RawOCRLine(text: literal, confidence: 0.1, boundingBox: RawRect(CGRect(x: 0.1, y: 0.2, width: 0.3, height: 0.4)))])
@@ -38,19 +43,16 @@ enum RawCaptureStoreTests {
             _ = try await store.saveInference(RawInference(status: "failed", error: "Synthetic model failure"), index: updated)
             let afterInference = try Data(contentsOf: folder.appendingPathComponent("observation.json"))
             TestSupport.expectEqual(beforeInference, afterInference)
-            let export = try RawCaptureStore.export(folders: [folder], destination: temporary)
-            let exportedCapture = export.appendingPathComponent("captures/\(record.id.uuidString)")
-            let exportedPNG = try Data(contentsOf: exportedCapture.appendingPathComponent("screenshot.png"))
-            let exportedOCR = try String(contentsOf: exportedCapture.appendingPathComponent("ocr.txt"), encoding: .utf8)
-            TestSupport.expectEqual(exportedPNG, png)
-            TestSupport.expectEqual(exportedOCR, literal)
-            let manifest = try String(contentsOf: export.appendingPathComponent("manifest.jsonl"), encoding: .utf8)
-            let lines = manifest.split(separator: "\n")
-            TestSupport.expectEqual(lines.count, 1)
-            let json = try JSONSerialization.jsonObject(with: Data(lines[0].utf8)) as! [String: Any]
-            TestSupport.expectEqual(json["screenshot"] as? String, "captures/\(record.id.uuidString)/screenshot.png")
-            let exportedRecord = json["observation"] as! [String: Any]
-            TestSupport.expectEqual((exportedRecord["ocr"] as! [String: Any])["text"] as? String, literal)
+            let copied = try await store.rawText(day: stamp, timeZone: TimeZone(identifier: "Australia/Melbourne")!)
+            TestSupport.expectEqual(copied.contains(literal), true)
+            TestSupport.expectEqual(copied.contains("Synthetic Editor"), true)
+            TestSupport.expectEqual(copied.contains("Australia/Melbourne"), true)
+            TestSupport.expectEqual(copied.contains("+10:00"), true)
+            TestSupport.expectEqual(copied.contains("Synthetic model failure"), true)
+            TestSupport.expectEqual(copied.contains("screenshot.png"), false)
+            let empty = try await store.rawText(day: stamp.addingTimeInterval(86400), timeZone: TimeZone(identifier: "Australia/Melbourne")!)
+            TestSupport.expectEqual(empty.contains(literal), false)
+            TestSupport.expectEqual(empty.contains("0 screenshots"), true)
             let mode = try FileManager.default.attributesOfItem(atPath: folder.path)[.posixPermissions] as? NSNumber
             TestSupport.expectEqual(mode?.intValue, 0o700)
             var malicious = index

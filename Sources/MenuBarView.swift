@@ -438,10 +438,9 @@ struct DenMenuBarView: View {
     @ObservedObject private var journal = ActivityJournal.shared
 
     var body: some View {
+        Button(journal.exporting ? "Copying…" : "Copy today’s commits") { journal.export() }.disabled(journal.exporting)
+        Text("\(journal.todayCount) screenshots taken today")
         Button("Git for Work (Den)") { journal.showWindow() }
-        Button(journal.enabled ? "Pause captures" : "Start captures") { journal.setEnabled(!journal.enabled) }
-            .disabled(journal.storageError != nil)
-        Button("Export all captures…") { journal.export(day: nil) }.disabled(journal.exporting)
         Divider()
         Menu("Dictation") { MenuBarView().environmentObject(appState) }
         Button("Quit") { NSApplication.shared.terminate(nil) }.keyboardShortcut("q")

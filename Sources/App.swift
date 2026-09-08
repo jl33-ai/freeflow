@@ -19,6 +19,7 @@ struct FreeFlowApp: App {
 
 @MainActor
 struct MenuBarLabel: View {
+    @EnvironmentObject var appState: AppState
     private static let logo: NSImage = {
         let image = NSImage(contentsOf: Bundle.main.url(forResource: "DenMenu", withExtension: "png")!)!
         image.size = NSSize(width: 18, height: 18)
@@ -27,6 +28,10 @@ struct MenuBarLabel: View {
     }()
 
     var body: some View {
-        Image(nsImage: Self.logo).renderingMode(.template).help("Git for Work (Den)")
+        HStack(spacing: 3) {
+            Image(nsImage: Self.logo).renderingMode(.template)
+            if appState.isRecording { Image(systemName: "record.circle.fill") }
+            else if appState.isTranscribing { Image(systemName: "ellipsis") }
+        }.help("Git for Work (Den)")
     }
 }

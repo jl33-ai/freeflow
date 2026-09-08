@@ -1,8 +1,17 @@
 import Foundation
+import AppKit
 
 enum ActivityJournalTests {
     static func run() {
         testCommitHistory()
+        // A template icon needs real alpha; an opaque background renders as a square.
+        let icon = NSBitmapImageRep(data: try! Data(contentsOf: URL(fileURLWithPath: "Resources/DenMenu.png")))!
+        TestSupport.expectEqual(icon.hasAlpha, true)
+        TestSupport.expectEqual(icon.colorAt(x: 0, y: 0)!.alphaComponent < 0.01, true)
+        let alphas = (0..<icon.pixelsHigh).flatMap { y in (0..<icon.pixelsWide).map { x in icon.colorAt(x: x, y: y)!.alphaComponent } }
+        TestSupport.expectEqual(alphas.contains { $0 > 0.9 }, true)
+        TestSupport.expectEqual(alphas.filter { $0 < 0.01 }.count > alphas.count / 3, true)
+
         // Transport must attach the original image bytes, without falling back to text-only input.
         let syntheticPNG = Data([137, 80, 78, 71, 13, 10, 26, 10])
         let body = try! JournalLocalModel.requestBody(app: "Synthetic Editor", observations: "Window: Diagram", screenshotPNG: syntheticPNG)
@@ -12,11 +21,11 @@ enum ActivityJournalTests {
         TestSupport.expectEqual(payload["think"] as? Bool, false)
         TestSupport.expectEqual((try? JournalLocalModel.requestBody(app: "Editor", observations: "", screenshotPNG: Data())) == nil, true)
 
-        TestSupport.expectEqual(JournalCore.captureInterval(0), 15)
+        TestSupport.expectEqual(JournalCore.captureInterval(0), 60)
         TestSupport.expectEqual(JournalCore.captureInterval(7), 7)
         TestSupport.expectEqual(JournalCore.captureInterval(2), 5)
         TestSupport.expectEqual(JournalCore.captureInterval(900), 300)
-        TestSupport.expectEqual(JournalCore.captureInterval(.nan), 15)
+        TestSupport.expectEqual(JournalCore.captureInterval(.nan), 60)
         let start = Date(timeIntervalSince1970: 1000)
         // A recent mouse/key event must count even if no CG null event has occurred.
         let recentInput = JournalCapture.idleSeconds { _, type in type.rawValue == UInt32.max ? 3 : 3600 }

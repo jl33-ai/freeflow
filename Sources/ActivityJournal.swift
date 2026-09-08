@@ -6,7 +6,10 @@ import ImageIO
 final class ActivityJournal: ObservableObject {
     static let shared = ActivityJournal()
     @Published private(set) var records: [RawCaptureIndex] = []
-    @Published private(set) var enabled = UserDefaults.standard.bool(forKey: "journal_enabled")
+    @Published private(set) var enabled = true
+    @Published private(set) var todayCount = 0
+    private var todayIDs = Set<UUID>()
+    private var countDay = RawCaptureJSON.day(Date())
     @Published private(set) var status = "Paused"
     @Published private(set) var modelStatus = "Apple OCR and Qwen 3.5 · 9B vision"
     @Published private(set) var storageError: String?
@@ -25,9 +28,6 @@ final class ActivityJournal: ObservableObject {
     private var observers: [NSObjectProtocol] = []
     private var capturing = false
     private var generation = UUID()
-    private var ocrQueue: [RawCaptureIndex] = []
-    private var inferenceQueue: [RawCaptureIndex] = []
-    private var ocrTask: Task<Void, Never>?
     private var inferenceTask: Task<Void, Never>?
     private var window: NSWindow?
 
@@ -53,11 +53,22 @@ final class ActivityJournal: ObservableObject {
         }
         Task {
             do {
-                let all = try await store.list()
+                try await store.removePersistedScreenshots()
+                var all = try await store.list()
+                // In-memory images cannot resume after restart. Keep explicit status, never fabricate OCR.
+                for item in all where item.ocrStatus == "pending" || item.inferenceStatus == "pending" {
+                    var updated = item
+                    if item.ocrStatus == "pending" {
+                        updated = try await store.saveOCR(RawOCR(status: "interrupted", error: "Image no longer retained."), index: updated)
+                    }
+                    if item.inferenceStatus == "pending" {
+                        _ = try await store.saveInference(RawInference(status: "interrupted", error: "Image no longer retained."), index: updated)
+                    }
+                }
+                all = try await store.list()
+                todayIDs = Set(all.filter { Calendar.current.isDateInToday($0.capturedAt) }.map(\.id))
+                todayCount = todayIDs.count
                 records = all.filter { $0.day == selectedDay }
-                ocrQueue = all.filter { $0.ocrStatus == "pending" }
-                inferenceQueue = all.filter { $0.ocrStatus != "pending" && $0.inferenceStatus == "pending" }
-                runOCR(); runInference()
                 configureTimer()
                 capture()
             } catch { failStorage() }
@@ -120,10 +131,12 @@ final class ActivityJournal: ObservableObject {
     func shutdown() {
         generation = UUID()
         timer?.invalidate()
-        // Every queued item is already durable on disk and resumes next launch.
+        // Screenshot buffers are memory-only and are released when the process exits.
     }
 
     private func publish(_ index: RawCaptureIndex) {
+        refreshCountDay()
+        if Calendar.current.isDateInToday(index.capturedAt) { todayIDs.insert(index.id); todayCount = todayIDs.count }
         guard index.day == selectedDay else { return }
         if let position = records.firstIndex(where: { $0.id == index.id }) { records[position] = index }
         else { records.append(index) }
@@ -136,7 +149,13 @@ final class ActivityJournal: ObservableObject {
         configureTimer()
     }
 
+    private func refreshCountDay() {
+        let current = RawCaptureJSON.day(Date())
+        if current != countDay { countDay = current; todayIDs.removeAll(); todayCount = 0 }
+    }
+
     private func capture() {
+        refreshCountDay()
         guard enabled, storageError == nil else { return }
         guard !suspended else { status = "Asleep · no screenshots"; return }
         if let session = CGSessionCopyCurrentDictionary() as? [String: Any], session["CGSSessionScreenIsLocked"] as? Bool == true {
@@ -160,13 +179,16 @@ final class ActivityJournal: ObservableObject {
         Task {
             defer { capturing = false }
             do {
-                let result = try await Task.detached(priority: .utility) { () -> (JournalCapture.WindowCapture, Data)? in
+                let result = try await Task.detached(priority: .utility) { () -> (JournalCapture.WindowCapture, Data, RawOCR)? in
                     guard let capture = try await JournalCapture.captureWindow(pid: pid),
                           let png = NSBitmapImageRep(cgImage: capture.image).representation(using: .png, properties: [:]) else { return nil }
-                    return (capture, png)
+                    let ocr: RawOCR
+                    do { ocr = try JournalCapture.literalOCR(image: capture.image) }
+                    catch { ocr = RawOCR(status: "failed", error: "Apple Vision could not recognize this capture.") }
+                    return (capture, png, ocr)
                 }.value
                 guard token == generation, enabled else { return }
-                guard let (capture, png) = result else { status = "Window unavailable or private · skipped"; return }
+                guard let (capture, png, ocr) = result else { status = "Window unavailable or private · skipped"; return }
                 let zone = TimeZone.current
                 let record = RawObservation(id: UUID(), requestedAt: requestedAt, capturedAt: capture.capturedAt,
                     localTimestamp: RawCaptureJSON.timestamp(capture.capturedAt, timeZone: zone), timeZoneIdentifier: zone.identifier,
@@ -176,11 +198,14 @@ final class ActivityJournal: ObservableObject {
                     imageWidth: capture.image.width, imageHeight: capture.image.height,
                     osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
                     documentURL: capture.documentURL, focusedElementRole: capture.focusedRole,
-                    frontmostAtCompletion: NSWorkspace.shared.frontmostApplication?.processIdentifier == pid)
-                let index = try await store.save(record, png: png)
+                    frontmostAtCompletion: NSWorkspace.shared.frontmostApplication?.processIdentifier == pid, ocr: ocr)
+                let index = try await store.save(record)
                 publish(index)
-                ocrQueue.append(index); runOCR()
-                status = "Saving a screenshot every \(Int(captureInterval)) seconds"
+                if inferenceTask == nil { runInference(index: index, record: record, png: png) }
+                else {
+                    publish(try await store.saveInference(RawInference(status: "skipped", error: "Previous description still processing. OCR retained; image discarded."), index: index))
+                }
+                status = "Reading the screen every \(Int(captureInterval)) seconds"
             } catch {
                 // Capture API failures do not destroy prior captures or their processing queue.
                 status = "Capture failed; retrying at the next interval"
@@ -189,48 +214,18 @@ final class ActivityJournal: ObservableObject {
         }
     }
 
-    private func runOCR() {
-        guard ocrTask == nil, !ocrQueue.isEmpty else { return }
-        let index = ocrQueue.removeFirst()
-        ocrTask = Task {
-            do {
-                let folder = try await store.folder(index)
-                let ocr: RawOCR = await Task.detached(priority: .utility) {
-                    do {
-                        guard let source = CGImageSourceCreateWithURL(folder.appendingPathComponent("screenshot.png") as CFURL, nil),
-                              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw CocoaError(.fileReadCorruptFile) }
-                        return try JournalCapture.literalOCR(image: image)
-                    } catch { return RawOCR(status: "failed", error: "Apple Vision could not recognize this capture.") }
-                }.value
-                let updated = try await store.saveOCR(ocr, index: index)
-                publish(updated)
-                inferenceQueue.append(updated); runInference()
-            } catch { failStorage() }
-            ocrTask = nil
-            if storageError == nil { runOCR() }
-        }
-    }
-
-    private func runInference() {
-        guard inferenceTask == nil, !inferenceQueue.isEmpty else { return }
-        let index = inferenceQueue.removeFirst()
-        modelStatus = "Describing captures locally · \(inferenceQueue.count + 1) queued"
+    private func runInference(index: RawCaptureIndex, record: RawObservation, png: Data) {
+        modelStatus = "Describing screenshot locally"
         inferenceTask = Task {
             do {
-                let record = try await store.read(index)
                 let inference: RawInference
                 do {
-                    // Give the vision model the original screenshot. Apple OCR remains a separate raw export.
-                    let folder = try await store.folder(index)
-                    let png = try await Task.detached(priority: .utility) {
-                        try Data(contentsOf: folder.appendingPathComponent("screenshot.png"))
-                    }.value
                     let result = try await JournalLocalModel.summarize(app: record.appName,
                         observations: "Window: \(record.windowTitle)", screenshotPNG: png)
                     inference = RawInference(status: "complete", completedAt: Date(), summary: result.summary, category: result.category, confidence: result.confidence,
                                              rawOCRCharacterCount: record.ocr.text.count, modelInputCharacterLimit: 0, modelInputTruncated: false, inputMode: "screenshot+app/window metadata")
                 } catch {
-                    inference = RawInference(status: "failed", completedAt: Date(), error: "Local model unavailable or response invalid. Raw screenshot and OCR retained.",
+                    inference = RawInference(status: "failed", completedAt: Date(), error: "Local model unavailable or response invalid. OCR retained; screenshot discarded.",
                                              rawOCRCharacterCount: record.ocr.text.count, modelInputCharacterLimit: 0, modelInputTruncated: false, inputMode: "screenshot+app/window metadata")
                 }
                 let updated = try await store.saveInference(inference, index: index)
@@ -238,7 +233,6 @@ final class ActivityJournal: ObservableObject {
             } catch { failStorage() }
             inferenceTask = nil
             modelStatus = "Apple OCR and Qwen 3.5 · 9B vision"
-            if storageError == nil { runInference() }
         }
     }
 
@@ -250,28 +244,18 @@ final class ActivityJournal: ObservableObject {
 
     func revealStorage() { NSWorkspace.shared.open(root) }
 
-    func export(day: Date?) {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true; panel.canChooseFiles = false
-        panel.canCreateDirectories = true; panel.allowsMultipleSelection = false
-        panel.prompt = "Export here"
-        panel.message = "Choose a folder for the raw screenshots, OCR, metadata and JSONL manifest."
-        panel.begin { [weak self] response in
-            guard response == .OK, let destination = panel.url else { return }
-            Task { @MainActor in
-                guard let self else { return }
-                self.exporting = true
-                defer { self.exporting = false }
-                do {
-                    let indices = try await self.store.list(day: day.map { RawCaptureJSON.day($0) })
-                    guard !indices.isEmpty else { self.status = "No captures to export"; return }
-                    var folders: [URL] = []
-                    for index in indices { folders.append(try await self.store.folder(index)) }
-                    let exported = try await Task.detached(priority: .utility) { try RawCaptureStore.export(folders: folders, destination: destination) }.value
-                    self.status = "Exported \(indices.count) raw captures"
-                    NSWorkspace.shared.activateFileViewerSelecting([exported])
-                } catch { self.status = "Export failed. Original captures are unchanged." }
-            }
+    func export(day: Date? = nil) {
+        guard !exporting else { return }
+        exporting = true
+        let selected = day ?? Date()
+        Task {
+            defer { exporting = false }
+            do {
+                let text = try await store.rawText(day: selected)
+                NSPasteboard.general.clearContents()
+                guard NSPasteboard.general.setString(text, forType: .string) else { throw CocoaError(.fileWriteUnknown) }
+                status = "Copied raw day to clipboard"
+            } catch { status = "Could not copy raw data. Please try again." }
         }
     }
 
