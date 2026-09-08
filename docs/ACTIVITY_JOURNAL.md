@@ -93,8 +93,9 @@ OCR + local model smoke test passed, including intention matching and a known
 instruction-injection fixture. Warm fixture OCR was about 0.09 seconds and local
 interpretation about 1.4 seconds; cold initialization was substantially slower.
 These are fixture measurements, not battery or real-workday benchmarks.
-The installed process launched with the journal window requested. Live UI and
-capture verification remain pending: the desktop inspection service returned
-ScreenCaptureKit error -3811 before it could inspect the window. The lock/sleep,
-permission and real-window checklist above has not been completed. Do not merge
-on the strength of the synthetic tests alone.
+The installed compact journal window was inspected through native accessibility
+and a screenshot: Start/Pause, day navigation, collapsed Daily plan and settings
+are present. A later check corrected the idle query to use all keyboard/mouse
+input, with a synthetic regression test. Live OCR collection, lock/sleep and
+permission-revocation checks remain pending. Do not merge on the strength of the
+synthetic tests and empty-state UI inspection alone.

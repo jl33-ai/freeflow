@@ -3,6 +3,13 @@ import Vision
 import ScreenCaptureKit
 
 enum JournalCapture {
+    static func idleSeconds(read: (CGEventSourceStateID, CGEventType) -> Double = {
+        CGEventSource.secondsSinceLastEventType($0, eventType: $1)
+    }) -> Double {
+        // kCGAnyInputEventType; .null is a specific event, not any keyboard/mouse input.
+        read(.combinedSessionState, CGEventType(rawValue: UInt32.max)!)
+    }
+
     struct Snapshot {
         var identity: String
         var text: String

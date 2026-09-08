@@ -3,6 +3,9 @@ import Foundation
 enum ActivityJournalTests {
     static func run() {
         let start = Date(timeIntervalSince1970: 1000)
+        // A recent mouse/key event must count even if no CG null event has occurred.
+        let recentInput = JournalCapture.idleSeconds { _, type in type.rawValue == UInt32.max ? 3 : 3600 }
+        TestSupport.expectEqual(JournalCore.creditedSeconds(from: start, to: start.addingTimeInterval(15), idle: recentInput), 15)
         TestSupport.expectEqual(JournalCore.creditedSeconds(from: start, to: start.addingTimeInterval(15), idle: 2), 15)
         TestSupport.expectEqual(JournalCore.creditedSeconds(from: start, to: start.addingTimeInterval(15), idle: 127), 8)
         TestSupport.expectEqual(JournalCore.creditedSeconds(from: start, to: start.addingTimeInterval(15), idle: 200), 0)

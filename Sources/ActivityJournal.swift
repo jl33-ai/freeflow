@@ -96,7 +96,7 @@ final class ActivityJournal: ObservableObject {
     }
 
     private var idle: Double {
-        CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .null)
+        JournalCapture.idleSeconds()
     }
 
     private func credit(until now: Date) {

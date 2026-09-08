@@ -53,7 +53,10 @@ struct ActivityJournalView: View {
                         VStack(spacing: 8) {
                             Image(systemName: "book.closed").font(.system(size: 30)).foregroundStyle(.tertiary)
                             Text(isToday ? "Your day will show up here." : "Nothing recorded this day.").font(.headline)
-                            if isToday { Text("Click Start, then get on with your work.").foregroundStyle(.secondary) }
+                            if isToday {
+                                Text(journal.enabled ? "Your first entry will appear as you work." : "Click Start, then get on with your work.")
+                                    .foregroundStyle(.secondary)
+                            }
                         }.frame(maxWidth: .infinity).padding(.vertical, 75)
                     }
                     ForEach(entries) { entry in
