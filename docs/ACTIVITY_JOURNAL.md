@@ -19,7 +19,7 @@ unchanged and shows “No completed LLM summaries for this day”. Day selection
 formatting use the current local timezone and its daylight-saving rules.
 
 Screenshots are processed in memory and given directly to Qwen3.5 9B on loopback
-Ollama (`127.0.0.1:11436`). Settings has a persistent segmented switch: Use OCR / Use Vision Model. Vision is
+Ollama (`127.0.0.1:11436`). Settings has a persistent segmented switch: Use OCR / Use Vision Model. OCR is
 the default. Vision sends the PNG directly to Qwen3.5 9B; OCR uses Apple Vision in
 memory and supplies up to 18,000 characters to local Qwen2.5 3B without attaching
 an image. The selected mode is fixed for each capture even if the switch changes
@@ -60,3 +60,7 @@ blue-circle/orange-bars image was correctly described in 13.9 seconds. Synthetic
 instruction-injection smoke also passed. These measurements are limited examples,
 not guaranteed latency for all screenshots. Source-file cleanup was verified by
 filename counts only: zero screenshot.png, ocr.txt or observation.json remaining.
+
+The default installer downloads only Qwen2.5 3B. Qwen3.5 9B was removed from this
+Mac at the user's request; selecting Vision later requires installing it manually.
+The current saved preference is OCR. No screenshots or OCR text are retained.

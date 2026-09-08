@@ -11,14 +11,14 @@ final class ActivityJournal: ObservableObject {
     private var todayIDs = Set<UUID>()
     private var countDay = RawCaptureJSON.day(Date())
     @Published private(set) var status = "Paused"
-    @Published private(set) var modelStatus = "Qwen 3.5 · 9B vision"
+    @Published private(set) var modelStatus = "Apple OCR · local text model"
     @Published private(set) var storageError: String?
     @Published private(set) var exporting = false
     @Published private(set) var captureInterval = JournalCore.captureInterval(UserDefaults.standard.double(forKey: "journal_capture_interval"))
     @Published var excludedApps = UserDefaults.standard.string(forKey: "journal_excluded_apps") ?? "" {
         didSet { UserDefaults.standard.set(excludedApps, forKey: "journal_excluded_apps") }
     }
-    @Published var inputMode = JournalInputMode(rawValue: UserDefaults.standard.string(forKey: "journal_input_mode") ?? "") ?? .vision {
+    @Published var inputMode = JournalInputMode(rawValue: UserDefaults.standard.string(forKey: "journal_input_mode") ?? "") ?? .ocr {
         didSet { UserDefaults.standard.set(inputMode.rawValue, forKey: "journal_input_mode") }
     }
     private let root: URL
@@ -236,7 +236,7 @@ final class ActivityJournal: ObservableObject {
                 publish(updated)
             } catch { failStorage() }
             inferenceTask = nil
-            modelStatus = "Qwen 3.5 · 9B vision"
+            modelStatus = inputMode == .ocr ? "Apple OCR · local text model" : "Qwen 3.5 · 9B vision"
         }
     }
 
