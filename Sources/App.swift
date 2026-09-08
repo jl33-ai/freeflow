@@ -21,6 +21,7 @@ struct FreeFlowApp: App {
 struct MenuBarLabel: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject var notificationManager = VocabularyNotificationManager.shared
+    @ObservedObject private var journal = ActivityJournal.shared
 
     private var iconName: String {
         if appState.isRecording { return "record.circle" }
@@ -30,6 +31,7 @@ struct MenuBarLabel: View {
 
     var body: some View {
         HStack(spacing: 4) {
+            if journal.enabled { Image(systemName: "book.closed.fill").help("Activity Journal enabled") }
             if notificationManager.showCheckmark {
                 Image(systemName: "checkmark")
             }

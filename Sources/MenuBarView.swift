@@ -3,6 +3,7 @@ import SwiftUI
 struct MenuBarView: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject private var updateManager = UpdateManager.shared
+    @ObservedObject private var journal = ActivityJournal.shared
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -113,6 +114,12 @@ struct MenuBarView: View {
             Divider()
 
             // Manual toggle
+            Button("Activity Journal…") { journal.showWindow() }
+            Button(journal.enabled ? "Pause Activity Journal" : "Start Activity Journal") {
+                journal.setEnabled(!journal.enabled)
+            }
+            Divider()
+
             Button(appState.isRecording ? "Stop Recording" : "Start Dictating") {
                 appState.toggleRecording()
             }

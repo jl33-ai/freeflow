@@ -3,6 +3,7 @@ import Foundation
 @main
 struct FreeFlowTests {
     static func main() async {
+        ActivityJournalTests.run()
         AppContextServiceTests.run()
         DictationProfileTests.run()
         ModelConfigurationTests.run()
