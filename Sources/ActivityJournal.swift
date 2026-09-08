@@ -11,7 +11,7 @@ final class ActivityJournal: ObservableObject {
     private var todayIDs = Set<UUID>()
     private var countDay = RawCaptureJSON.day(Date())
     @Published private(set) var status = "Paused"
-    @Published private(set) var modelStatus = "Apple OCR and Qwen 3.5 · 9B vision"
+    @Published private(set) var modelStatus = "Qwen 3.5 · 9B vision"
     @Published private(set) var storageError: String?
     @Published private(set) var exporting = false
     @Published private(set) var captureInterval = JournalCore.captureInterval(UserDefaults.standard.double(forKey: "journal_capture_interval"))
@@ -53,17 +53,11 @@ final class ActivityJournal: ObservableObject {
         }
         Task {
             do {
-                try await store.removePersistedScreenshots()
+                try await store.removeSourceMaterial()
                 var all = try await store.list()
                 // In-memory images cannot resume after restart. Keep explicit status, never fabricate OCR.
-                for item in all where item.ocrStatus == "pending" || item.inferenceStatus == "pending" {
-                    var updated = item
-                    if item.ocrStatus == "pending" {
-                        updated = try await store.saveOCR(RawOCR(status: "interrupted", error: "Image no longer retained."), index: updated)
-                    }
-                    if item.inferenceStatus == "pending" {
-                        _ = try await store.saveInference(RawInference(status: "interrupted", error: "Image no longer retained."), index: updated)
-                    }
+                for item in all where item.inferenceStatus == "pending" {
+                    _ = try await store.saveInference(RawInference(status: "interrupted", error: "Image no longer retained."), index: item)
                 }
                 all = try await store.list()
                 todayIDs = Set(all.filter { Calendar.current.isDateInToday($0.capturedAt) }.map(\.id))
@@ -84,7 +78,7 @@ final class ActivityJournal: ObservableObject {
             do {
                 let items = try await store.list(day: key)
                 if viewGeneration == token { records = items }
-            } catch { storageError = "Could not read captures. Raw files have been preserved." }
+            } catch { storageError = "Could not read captures. Summaries have been preserved." }
         }
     }
 
@@ -143,7 +137,7 @@ final class ActivityJournal: ObservableObject {
     }
 
     private func failStorage() {
-        storageError = "Recording stopped. Check disk space and file access, then restart the app. Raw files are preserved."
+        storageError = "Recording stopped. Check disk space and file access, then restart the app. Summaries are preserved."
         enabled = false
         UserDefaults.standard.set(false, forKey: "journal_enabled")
         configureTimer()
@@ -179,16 +173,13 @@ final class ActivityJournal: ObservableObject {
         Task {
             defer { capturing = false }
             do {
-                let result = try await Task.detached(priority: .utility) { () -> (JournalCapture.WindowCapture, Data, RawOCR)? in
+                let result = try await Task.detached(priority: .utility) { () -> (JournalCapture.WindowCapture, Data)? in
                     guard let capture = try await JournalCapture.captureWindow(pid: pid),
                           let png = NSBitmapImageRep(cgImage: capture.image).representation(using: .png, properties: [:]) else { return nil }
-                    let ocr: RawOCR
-                    do { ocr = try JournalCapture.literalOCR(image: capture.image) }
-                    catch { ocr = RawOCR(status: "failed", error: "Apple Vision could not recognize this capture.") }
-                    return (capture, png, ocr)
+                    return (capture, png)
                 }.value
                 guard token == generation, enabled else { return }
-                guard let (capture, png, ocr) = result else { status = "Window unavailable or private · skipped"; return }
+                guard let (capture, png) = result else { status = "Window unavailable or private · skipped"; return }
                 let zone = TimeZone.current
                 let record = RawObservation(id: UUID(), requestedAt: requestedAt, capturedAt: capture.capturedAt,
                     localTimestamp: RawCaptureJSON.timestamp(capture.capturedAt, timeZone: zone), timeZoneIdentifier: zone.identifier,
@@ -198,12 +189,12 @@ final class ActivityJournal: ObservableObject {
                     imageWidth: capture.image.width, imageHeight: capture.image.height,
                     osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
                     documentURL: capture.documentURL, focusedElementRole: capture.focusedRole,
-                    frontmostAtCompletion: NSWorkspace.shared.frontmostApplication?.processIdentifier == pid, ocr: ocr)
+                    frontmostAtCompletion: NSWorkspace.shared.frontmostApplication?.processIdentifier == pid)
                 let index = try await store.save(record)
                 publish(index)
                 if inferenceTask == nil { runInference(index: index, record: record, png: png) }
                 else {
-                    publish(try await store.saveInference(RawInference(status: "skipped", error: "Previous description still processing. OCR retained; image discarded."), index: index))
+                    publish(try await store.saveInference(RawInference(status: "skipped", error: "Previous description still processing. Image discarded."), index: index))
                 }
                 status = "Reading the screen every \(Int(captureInterval)) seconds"
             } catch {
@@ -223,16 +214,16 @@ final class ActivityJournal: ObservableObject {
                     let result = try await JournalLocalModel.summarize(app: record.appName,
                         observations: "Window: \(record.windowTitle)", screenshotPNG: png)
                     inference = RawInference(status: "complete", completedAt: Date(), summary: result.summary, category: result.category, confidence: result.confidence,
-                                             rawOCRCharacterCount: record.ocr.text.count, modelInputCharacterLimit: 0, modelInputTruncated: false, inputMode: "screenshot+app/window metadata")
+                                             modelInputCharacterLimit: 0, modelInputTruncated: false, inputMode: "screenshot+app/window metadata")
                 } catch {
-                    inference = RawInference(status: "failed", completedAt: Date(), error: "Local model unavailable or response invalid. OCR retained; screenshot discarded.",
-                                             rawOCRCharacterCount: record.ocr.text.count, modelInputCharacterLimit: 0, modelInputTruncated: false, inputMode: "screenshot+app/window metadata")
+                    inference = RawInference(status: "failed", completedAt: Date(), error: "Local model unavailable or response invalid. Screenshot discarded.",
+                                             modelInputCharacterLimit: 0, modelInputTruncated: false, inputMode: "screenshot+app/window metadata")
                 }
                 let updated = try await store.saveInference(inference, index: index)
                 publish(updated)
             } catch { failStorage() }
             inferenceTask = nil
-            modelStatus = "Apple OCR and Qwen 3.5 · 9B vision"
+            modelStatus = "Qwen 3.5 · 9B vision"
         }
     }
 
@@ -251,11 +242,12 @@ final class ActivityJournal: ObservableObject {
         Task {
             defer { exporting = false }
             do {
-                let text = try await store.rawText(day: selected)
+                let text = try await store.summaryText(day: selected)
+                guard !text.isEmpty else { status = "No completed LLM summaries for this day"; return }
                 NSPasteboard.general.clearContents()
                 guard NSPasteboard.general.setString(text, forType: .string) else { throw CocoaError(.fileWriteUnknown) }
-                status = "Copied raw day to clipboard"
-            } catch { status = "Could not copy raw data. Please try again." }
+                status = "Copied summaries to clipboard"
+            } catch { status = "Could not copy summaries. Please try again." }
         }
     }
 

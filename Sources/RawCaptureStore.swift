@@ -71,7 +71,6 @@ struct RawCaptureIndex: Codable, Identifiable {
     var appName: String
     var relativePath: String
     var summary = ""
-    var ocrStatus = "pending"
     var inferenceStatus = "pending"
 }
 
@@ -145,9 +144,7 @@ actor RawCaptureStore {
         let final = directory.appendingPathComponent(record.id.uuidString)
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: staging) }
-        let index = RawCaptureIndex(id: record.id, capturedAt: record.capturedAt, day: day, appName: record.appName, relativePath: "\(day)/\(record.id.uuidString)", ocrStatus: record.ocr.status)
-        try RawCaptureJSON.write(record, to: staging.appendingPathComponent("observation.json"))
-        guard FileManager.default.createFile(atPath: staging.appendingPathComponent("ocr.txt").path, contents: Data(record.ocr.text.utf8), attributes: [.posixPermissions: 0o600]) else { throw CocoaError(.fileWriteUnknown) }
+        let index = RawCaptureIndex(id: record.id, capturedAt: record.capturedAt, day: day, appName: record.appName, relativePath: "\(day)/\(record.id.uuidString)")
         try RawCaptureJSON.write(RawInference(status: "pending"), to: staging.appendingPathComponent("inference.json"))
         try RawCaptureJSON.write(index, to: staging.appendingPathComponent("index.json"))
         try FileManager.default.moveItem(at: staging, to: final)
@@ -161,23 +158,6 @@ actor RawCaptureStore {
         return root.appendingPathComponent(index.relativePath)
     }
 
-    func read(_ index: RawCaptureIndex) throws -> RawObservation {
-        try RawCaptureJSON.decoder().decode(RawObservation.self, from: Data(contentsOf: folder(index).appendingPathComponent("observation.json")))
-    }
-
-    func saveOCR(_ ocr: RawOCR, index: RawCaptureIndex) throws -> RawCaptureIndex {
-        var record = try read(index)
-        record.ocr = ocr
-        let directory = try folder(index)
-        try RawCaptureJSON.write(record, to: directory.appendingPathComponent("observation.json"))
-        try Data(ocr.text.utf8).write(to: directory.appendingPathComponent("ocr.txt"), options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: directory.appendingPathComponent("ocr.txt").path)
-        var updated = index
-        updated.ocrStatus = ocr.status
-        try RawCaptureJSON.write(updated, to: directory.appendingPathComponent("index.json"))
-        return updated
-    }
-
     func saveInference(_ inference: RawInference, index: RawCaptureIndex) throws -> RawCaptureIndex {
         let directory = try folder(index)
         try RawCaptureJSON.write(inference, to: directory.appendingPathComponent("inference.json"))
@@ -188,37 +168,37 @@ actor RawCaptureStore {
         return updated
     }
 
-    // Migration removes only app-owned screenshot files; all text remains intact.
-    func removePersistedScreenshots() throws {
+    // Remove legacy source material, including OCR embedded inside observation.json.
+    // Summary/index files and unrelated user files are preserved.
+    func removeSourceMaterial() throws {
         guard FileManager.default.fileExists(atPath: root.path) else { return }
         guard let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey], options: []) else { return }
-        for case let file as URL in files where file.lastPathComponent == "screenshot.png" {
+        let sourceNames: Set<String> = ["screenshot.png", "ocr.txt", "observation.json"]
+        for case let file as URL in files where sourceNames.contains(file.lastPathComponent) {
             if try file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true {
                 try FileManager.default.removeItem(at: file)
             }
         }
     }
 
-    func rawText(day: Date, timeZone: TimeZone = .current) throws -> String {
+    func summaryText(day: Date, timeZone: TimeZone = .current) throws -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
-        let indices = try list().filter { calendar.isDate($0.capturedAt, inSameDayAs: day) }
-        let date = DateFormatter()
-        date.locale = Locale(identifier: "en_US_POSIX")
-        date.timeZone = timeZone
-        date.dateFormat = "yyyy-MM-dd"
         let time = DateFormatter()
-        time.locale = .current
+        time.locale = Locale(identifier: "en_US_POSIX")
         time.timeZone = timeZone
-        time.dateFormat = "h:mm:ss a zzz (XXXXX)"
-        var blocks = ["Git for Work (Den) — \(date.string(from: day)) — \(timeZone.identifier)\n\(indices.count) screenshots taken; images are not retained."]
-        for index in indices {
-            let record = try read(index)
-            let inference = try JSONSerialization.jsonObject(with: Data(contentsOf: folder(index).appendingPathComponent("inference.json")))
-            let observation = try JSONSerialization.jsonObject(with: RawCaptureJSON.encoder().encode(record))
-            let json = try JSONSerialization.data(withJSONObject: ["observation": observation, "inference": inference], options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
-            blocks.append("\(time.string(from: record.capturedAt)) — \(record.appName)\nWindow: \(record.windowTitle)\n\nRAW OCR:\n\(record.ocr.text)\n\nRAW METADATA + INFERENCE:\n\(String(decoding: json, as: UTF8.self))")
-        }
-        return blocks.joined(separator: "\n\n---\n\n")
+        time.dateFormat = "h:mma"
+        let offset = DateFormatter()
+        offset.locale = Locale(identifier: "en_US_POSIX")
+        offset.timeZone = timeZone
+        offset.dateFormat = "XXXXX"
+        return try list().filter {
+            calendar.isDate($0.capturedAt, inSameDayAs: day) && $0.inferenceStatus == "complete" &&
+            !$0.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }.map { item in
+            let summary = item.summary.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+            let zone = offset.string(from: item.capturedAt)
+            return "\(time.string(from: item.capturedAt).lowercased()) \(zone) · \(item.appName): \(summary)"
+        }.joined(separator: "\n")
     }
 }

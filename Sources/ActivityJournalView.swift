@@ -25,7 +25,7 @@ struct ActivityJournalView: View {
                 Spacer()
                 Text("\(journal.records.count) captures").foregroundStyle(.secondary)
                 Button(journal.exporting ? "Copying…" : "Copy day") { journal.export(day: day) }
-                    .disabled(journal.exporting).help("Copy this day’s raw OCR, app names, local times and metadata")
+                    .disabled(journal.exporting).help("Copy this day’s LLM summaries with app names and local times")
             }.buttonStyle(.plain).padding(.horizontal, 20).padding(.bottom, 16)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
@@ -45,11 +45,10 @@ struct ActivityJournalView: View {
                                     Spacer()
                                     Image(systemName: "folder")
                                 }.font(.caption).foregroundStyle(.secondary)
-                                Text(item.summary.isEmpty ? (item.inferenceStatus == "failed" ? "Description unavailable. Raw text saved." : "Raw text saved.") : item.summary)
+                                Text(item.summary.isEmpty ? (item.inferenceStatus == "failed" ? "Summary unavailable." : "Awaiting summary.") : item.summary)
                                     .multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
-                                if item.ocrStatus == "failed" { Text("OCR failed; metadata is available.").font(.caption).foregroundStyle(.secondary) }
                             }.padding(.vertical, 14).contentShape(Rectangle())
-                        }.buttonStyle(.plain).help("Open raw OCR and metadata files")
+                        }.buttonStyle(.plain).help("Open saved summary")
                         Divider()
                     }
                 }.padding(.horizontal, 20)
@@ -81,8 +80,8 @@ struct ActivityJournalView: View {
             Text("5–300 seconds").foregroundStyle(.secondary)
             Divider()
             TextField("Excluded apps, separated by commas", text: $journal.excludedApps)
-            Text("Screenshots are processed in memory, then discarded. Raw text stays on this Mac. Copy includes unredacted OCR and metadata.").foregroundStyle(.secondary)
-            Button("Open data folder") { journal.revealStorage() }
+            Text("Only summaries, app names, times and processing status are saved. Screenshots are processed in memory, then discarded. No OCR text is stored.").foregroundStyle(.secondary)
+            Button("Open summaries folder") { journal.revealStorage() }
             Button("Screen Recording permission…") { journal.openPermissions() }
         }.font(.callout).padding(20).frame(width: 340)
             .onAppear { captureSeconds = journal.captureInterval }

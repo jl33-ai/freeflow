@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 enum RawCaptureStoreTests {
     static func run() async {
@@ -8,7 +9,7 @@ enum RawCaptureStoreTests {
             let root = temporary.appendingPathComponent("raw")
             let store = RawCaptureStore(root: root)
             let stamp = Date(timeIntervalSince1970: 1_789_000_000)
-            let record = RawObservation(id: UUID(), requestedAt: stamp, capturedAt: stamp,
+            var record = RawObservation(id: UUID(), requestedAt: stamp, capturedAt: stamp,
                 localTimestamp: "2026-09-08T09:32:00.000+10:00", timeZoneIdentifier: "Australia/Melbourne",
                 utcOffsetSeconds: 36000, intervalSeconds: 7, idleSeconds: 125,
                 appName: "Synthetic Editor", bundleIdentifier: "test.synthetic", processID: 123,
@@ -16,43 +17,49 @@ enum RawCaptureStoreTests {
                 windowTitle: "Synthetic notes", windowBounds: RawRect(CGRect(x: 10, y: 20, width: 800, height: 600)),
                 imageWidth: 1600, imageHeight: 1200, osVersion: "Synthetic OS", documentURL: "file:///synthetic/notes.txt",
                 focusedElementRole: "AXTextArea", frontmostAtCompletion: true)
-            let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5xkAAAAASUVORK5CYII=")!
+            let literal = "PRIVATE_SYNTHETIC_OCR_123"
+            record.ocr = RawOCR(status: "complete", text: literal)
             let index = try await store.save(record)
             let folder = try await store.folder(index)
-            let pending = try await store.list()
-            TestSupport.expectEqual(pending.count, 1)
-            TestSupport.expectEqual(pending[0].ocrStatus, "pending")
-            TestSupport.expectEqual(FileManager.default.fileExists(atPath: folder.appendingPathComponent("screenshot.png").path), false)
-            // Legacy images are removed, but unrelated files and raw text survive migration.
-            try png.write(to: folder.appendingPathComponent("screenshot.png"))
+            let storedNames = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+            TestSupport.expectEqual(Set(storedNames), Set(["index.json", "inference.json"]))
+            for name in storedNames {
+                let contents = try String(contentsOf: folder.appendingPathComponent(name), encoding: .utf8)
+                TestSupport.expectEqual(contents.contains(literal), false)
+                TestSupport.expectEqual(contents.contains(record.windowTitle), false)
+            }
+            let summary = "Reviewed export timing and repeated final frames."
+            _ = try await store.saveInference(RawInference(status: "complete", summary: summary), index: index)
+            // Simulate old source files and verify migration preserves summaries and unrelated files.
+            for name in ["screenshot.png", "ocr.txt", "observation.json"] {
+                try Data(literal.utf8).write(to: folder.appendingPathComponent(name))
+            }
             try Data("keep".utf8).write(to: folder.appendingPathComponent("unrelated.txt"))
-            try await store.removePersistedScreenshots()
-            TestSupport.expectEqual(FileManager.default.fileExists(atPath: folder.appendingPathComponent("screenshot.png").path), false)
+            try await store.removeSourceMaterial()
+            try await store.removeSourceMaterial() // Idempotent on later launches.
+            for name in ["screenshot.png", "ocr.txt", "observation.json"] {
+                TestSupport.expectEqual(FileManager.default.fileExists(atPath: folder.appendingPathComponent(name).path), false)
+            }
             TestSupport.expectEqual(FileManager.default.fileExists(atPath: folder.appendingPathComponent("unrelated.txt").path), true)
-            let literal = "helo   wrld\ncontact: person@example.test\n/Users/synthetic/private.txt\npassword=fictional"
-            let ocr = RawOCR(status: "complete", text: literal,
-                             lines: [RawOCRLine(text: literal, confidence: 0.1, boundingBox: RawRect(CGRect(x: 0.1, y: 0.2, width: 0.3, height: 0.4)))])
-            let updated = try await store.saveOCR(ocr, index: index)
-            let restored = try await store.read(updated)
-            TestSupport.expectEqual(restored.ocr.text, literal)
-            TestSupport.expectEqual(restored.ocr.languageCorrection, false)
-            TestSupport.expectEqual(restored.ocr.lines[0].confidence, 0.1)
-            TestSupport.expectEqual(restored.documentURL, record.documentURL)
-            TestSupport.expectEqual(restored.intervalSeconds, 7)
-            let beforeInference = try Data(contentsOf: folder.appendingPathComponent("observation.json"))
-            _ = try await store.saveInference(RawInference(status: "failed", error: "Synthetic model failure"), index: updated)
-            let afterInference = try Data(contentsOf: folder.appendingPathComponent("observation.json"))
-            TestSupport.expectEqual(beforeInference, afterInference)
-            let copied = try await store.rawText(day: stamp, timeZone: TimeZone(identifier: "Australia/Melbourne")!)
-            TestSupport.expectEqual(copied.contains(literal), true)
+            let zone = TimeZone(identifier: "Australia/Melbourne")!
+            let copied = try await store.summaryText(day: stamp, timeZone: zone)
+            TestSupport.expectEqual(copied.contains(summary), true)
             TestSupport.expectEqual(copied.contains("Synthetic Editor"), true)
-            TestSupport.expectEqual(copied.contains("Australia/Melbourne"), true)
             TestSupport.expectEqual(copied.contains("+10:00"), true)
-            TestSupport.expectEqual(copied.contains("Synthetic model failure"), true)
-            TestSupport.expectEqual(copied.contains("screenshot.png"), false)
-            let empty = try await store.rawText(day: stamp.addingTimeInterval(86400), timeZone: TimeZone(identifier: "Australia/Melbourne")!)
-            TestSupport.expectEqual(empty.contains(literal), false)
-            TestSupport.expectEqual(empty.contains("0 screenshots"), true)
+            TestSupport.expectEqual(copied.contains(literal), false)
+            TestSupport.expectEqual(copied.contains("Synthetic notes"), false)
+            TestSupport.expectEqual(copied.contains("RAW"), false)
+            TestSupport.expectEqual(copied.split(separator: "\n").count, 1)
+            let empty = try await store.summaryText(day: stamp.addingTimeInterval(86400), timeZone: zone)
+            TestSupport.expectEqual(empty, "")
+            _ = try await store.saveInference(RawInference(status: "failed", summary: "Not a completed summary"), index: index)
+            let failed = try await store.summaryText(day: stamp, timeZone: zone)
+            TestSupport.expectEqual(failed, "")
+            // Test pasteboard round-trip without reading or replacing the user's clipboard.
+            let pasteboard = NSPasteboard.withUniqueName()
+            defer { pasteboard.releaseGlobally() }
+            TestSupport.expectEqual(pasteboard.setString(copied, forType: .string), true)
+            TestSupport.expectEqual(pasteboard.string(forType: .string), copied)
             let mode = try FileManager.default.attributesOfItem(atPath: folder.path)[.posixPermissions] as? NSNumber
             TestSupport.expectEqual(mode?.intValue, 0o700)
             var malicious = index
@@ -60,7 +67,7 @@ enum RawCaptureStoreTests {
             var rejected = false
             do { _ = try await store.folder(malicious) } catch { rejected = true }
             TestSupport.expectEqual(rejected, true)
-            print("Raw capture save/OCR/export round-trip passed")
-        } catch { fatalError("Synthetic raw export test failed: \(error)") }
+            print("Summary-only persistence, migration and clipboard round-trip passed")
+        } catch { fatalError("Synthetic summary export test failed: \(error)") }
     }
 }
