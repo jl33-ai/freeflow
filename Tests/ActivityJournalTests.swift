@@ -4,6 +4,13 @@ import AppKit
 enum ActivityJournalTests {
     static func run() {
         testCommitHistory()
+        TestSupport.expectEqual(JournalCore.shouldCapture(idleSeconds: 299.9), true)
+        TestSupport.expectEqual(JournalCore.shouldCapture(idleSeconds: 300), false)
+        TestSupport.expectEqual(JournalCore.shouldCapture(idleSeconds: 600), false)
+        TestSupport.expectEqual(JournalCore.shouldCapture(idleSeconds: 0), true)
+        TestSupport.expectEqual(JournalCore.shouldCapture(idleSeconds: .infinity), false)
+        TestSupport.expectEqual(JournalCore.shouldCapture(idleSeconds: .nan), false)
+        TestSupport.expectEqual(JournalCore.shouldCapture(idleSeconds: -1), false)
         // A template icon needs real alpha; an opaque background renders as a square.
         let icon = NSBitmapImageRep(data: try! Data(contentsOf: URL(fileURLWithPath: "Resources/DenMenu.png")))!
         TestSupport.expectEqual(icon.hasAlpha, true)

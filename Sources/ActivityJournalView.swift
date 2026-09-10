@@ -85,7 +85,7 @@ struct ActivityJournalView: View {
                     .focused($editingCaptureInterval).onSubmit { saveInterval() }
                 Text("seconds")
             }
-            Text("5–300 seconds").foregroundStyle(.secondary)
+            Text("5–300 seconds. Pauses after 5 minutes without mouse or keyboard activity.").foregroundStyle(.secondary)
             Divider()
             TextField("Excluded apps, separated by commas", text: $journal.excludedApps)
             Text("Only summaries, app names, times and processing status are saved. Screenshots are processed in memory, then discarded. No OCR text is stored.").foregroundStyle(.secondary)

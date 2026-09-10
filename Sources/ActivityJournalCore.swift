@@ -27,6 +27,10 @@ struct JournalArchive: Codable {
 }
 
 enum JournalCore {
+    static func shouldCapture(idleSeconds: Double) -> Bool {
+        idleSeconds.isFinite && idleSeconds >= 0 && idleSeconds < 300
+    }
+
     static func captureInterval(_ seconds: Double) -> Double {
         seconds.isFinite && seconds > 0 ? min(300, max(5, seconds.rounded())) : 60
     }

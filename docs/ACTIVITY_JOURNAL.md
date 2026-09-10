@@ -64,3 +64,9 @@ filename counts only: zero screenshot.png, ocr.txt or observation.json remaining
 The default installer downloads only Qwen2.5 3B. Qwen3.5 9B was removed from this
 Mac at the user's request; selecting Vision later requires installing it manually.
 The current saved preference is OCR. No screenshots or OCR text are retained.
+
+Capturing pauses when system-wide mouse/keyboard idle time reaches 300 seconds.
+The timer keeps checking; activity resumes capture on the next configured tick
+(within 60 seconds at the default interval). Sleep/lock exclusions remain. An
+already-running description may finish; no new screenshot/model request starts
+from an idle capture tick. No input-event contents are read or stored.

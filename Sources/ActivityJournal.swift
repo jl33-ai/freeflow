@@ -158,6 +158,11 @@ final class ActivityJournal: ObservableObject {
         if let session = CGSessionCopyCurrentDictionary() as? [String: Any], session["CGSSessionScreenIsLocked"] as? Bool == true {
             status = "Locked · no screenshots"; return
         }
+        let idle = JournalCapture.idleSeconds()
+        guard JournalCore.shouldCapture(idleSeconds: idle) else {
+            status = "Inactive for 5 minutes · waiting for activity"
+            return
+        }
         guard CGPreflightScreenCaptureAccess() else { status = "Screen Recording permission required"; return }
         guard !capturing else { status = "Finishing the previous screenshot"; return }
         guard let app = NSWorkspace.shared.frontmostApplication, app.bundleIdentifier != Bundle.main.bundleIdentifier,
@@ -167,7 +172,6 @@ final class ActivityJournal: ObservableObject {
         capturing = true
         let token = generation
         let requestedAt = Date()
-        let idle = JournalCapture.idleSeconds()
         let interval = captureInterval
         let mode = inputMode
         let pid = app.processIdentifier
